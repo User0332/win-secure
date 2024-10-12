@@ -10,38 +10,65 @@ def main():
         sys.exit()
 
     try:
-        print("Setting minimum password length to 7...")
-        utils.set_min_password_length(7)
+        # Password and Account Policies
+        utils.set_password_policy()
+        utils.set_account_lockout_policy()
 
-        print("Setting maximum password age to 30...")
-        utils.set_max_password_age(30)
+        # Audit Policies
+        utils.enable_audit_policy()
 
-        print("Enabling Windows Firewall...")
-        utils.enable_windows_firewall()
+        # Security Options
+        utils.disable_guest_account()
+        utils.set_security_options()
 
-        print("Setting User Account Control to 'Always notify'...")
-        utils.set_uac_to_always_notify()
+        # Disable AutoPlay and Developer Mode
+        utils.disable_autoplay()
+        utils.disable_developer_mode()
 
-        print("Turning off AutoPlay...")
-        utils.turn_off_autoplay()
+        # Disable Remote Access
+        utils.disable_remote_access()
 
-        print("Enabling auditing for all events...")
-        utils.enable_audit_everything()
+        # Update Windows
+        utils.update_windows()
 
-        print("Disabling file sharing...")
-        utils.disable_file_sharing()
+        # Enable Firewall
+        utils.enable_firewall()
 
-        print("Starting Windows Updates...")
-        utils.start_windows_updates()
+        # Ensure CTRL+ALT+DEL is required
+        utils.set_ctrl_alt_del_required()
 
-        print("Enabling real-time protection...")
-        utils.enable_real_time_protection()
+        # Configure Time Settings
+        utils.set_time_config()
 
-        print("Disabling 'Let Everyone permissions apply to anonymous users'...")
-        utils.disable_let_everyone_permissions_apply_to_anonymous_users()
+        # Manage Users
+        utils.manage_users()
 
-        print("Disabling insecure guest logons...")
-        utils.disable_insecure_guest_logons()
+        # Remove Unused Services
+        utils.remove_unused_services()
+
+        # Install Security Updates
+        utils.install_security_updates()
+
+        # Enable BitLocker
+        utils.enable_bitlocker()
+
+        # Configure Firewall Rules
+        utils.configure_firewall_rules()
+
+        # Set NTFS Permissions
+        utils.set_ntfs_permissions()
+
+        # Disable Unused Network Protocols
+        utils.disable_unused_network_protocols()
+
+        # Configure Account Policies
+        utils.configure_account_policies()
+
+        # Disable Anonymous SID Enumeration
+        utils.disable_anonymous_sid_enumeration()
+
+        # Disable Null Session Pipes and Shares
+        utils.disable_null_session_pipes_shares()
 
         print("\nSystem has been secured according to the specified settings.")
     except Exception as e:
