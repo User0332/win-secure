@@ -8,8 +8,8 @@ namespace WinSecure.CSharp
 		{
 			Console.WriteLine("Starting Windows Hardening Script...");
 			
-			// UserConfig.Configure();
-			// Console.WriteLine("Ate that up ;)");
+			UserConfig.Configure();
+			Console.WriteLine("Ate that up ;)");
 
 			return 0;
 		}
