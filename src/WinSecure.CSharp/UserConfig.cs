@@ -3,6 +3,11 @@ using System.Net;
 using Microsoft.Win32;
 using System.DirectoryServices.AccountManagement;
 using System.Collections.Generic;
+using System.IO;
+using System.Collections.Generic;
+using System;
+using System.ServiceProcess;
+
 
 
 
@@ -27,6 +32,8 @@ public class UserConfig
 		ApplySecurityPolicies();
 		CleanTemporaryFiles();
 		ConfigureFirewallAndNetworkSettings();
+        ManageGroups();
+        MiscellaneousConfigurations();
 	}
 
 
@@ -1233,15 +1240,120 @@ Revision=1
 
         private static void DeleteLocalUser(string userName)
         {
-            using (PrincipalContext ctx = new PrincipalContext(ContextType.Machine))
+            Console.WriteLine($"Deleting user '{userName}' and archiving their files...");
+
+            try
             {
-                UserPrincipal user = UserPrincipal.FindByIdentity(ctx, userName);
-                if (user != null)
+                // Get the user's profile directory
+                string? userProfilePath = GetUserProfilePath(userName);
+
+                // Define the backup directory
+                string backupDirectory = Path.Combine(@"C:\DeletedUserBackups", userName + "_" + DateTime.Now.ToString("yyyyMMddHHmmss"));
+
+                // Create the backup directory if it doesn't exist
+                Directory.CreateDirectory(backupDirectory);
+
+                // Copy the user's profile directory to the backup location
+                if (!string.IsNullOrEmpty(userProfilePath) && Directory.Exists(userProfilePath))
                 {
-                    user.Delete();
+                    Console.WriteLine($"Backing up user profile from '{userProfilePath}' to '{backupDirectory}'...");
+                    CopyDirectory(userProfilePath!, backupDirectory);
+                    Console.WriteLine("Backup completed.");
+                }
+                else
+                {
+                    Console.WriteLine($"User profile directory not found for user '{userName}'. No files were backed up.");
+                }
+
+                // Log the backup information
+                string logFilePath = @"C:\DeletedUserBackups\DeletedUsersLog.txt";
+                string logEntry = $"User '{userName}' deleted on {DateTime.Now}. Backup located at '{backupDirectory}'{Environment.NewLine}";
+                File.AppendAllText(logFilePath, logEntry);
+
+                // Delete the user account
+                using (PrincipalContext ctx = new PrincipalContext(ContextType.Machine))
+                {
+                    UserPrincipal user = UserPrincipal.FindByIdentity(ctx, userName);
+                    if (user != null)
+                    {
+                        user.Delete();
+                        Console.WriteLine($"User '{userName}' deleted successfully.");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"User '{userName}' does not exist.");
+                    }
                 }
             }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error deleting user '{userName}': {ex.Message}");
+            }
         }
+
+        private static string? GetUserProfilePath(string userName)
+        {
+            string profileListKey = @"SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList";
+            using (RegistryKey key = Registry.LocalMachine.OpenSubKey(profileListKey))
+            {
+                if (key != null)
+                {
+                    foreach (string subKeyName in key.GetSubKeyNames())
+                    {
+                        using (RegistryKey subKey = key.OpenSubKey(subKeyName))
+                        {
+                            string profilePath = (string) subKey.GetValue("ProfileImagePath");
+                            if (!string.IsNullOrEmpty(profilePath))
+                            {
+                                string profileUserName = Path.GetFileName(profilePath);
+                                if (profileUserName.Equals(userName, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    return profilePath;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            return null;
+        }
+
+        private static void CopyDirectory(string sourceDir, string destinationDir)
+        {
+            DirectoryInfo dir = new DirectoryInfo(sourceDir);
+
+            // Get the subdirectories for the specified directory
+            DirectoryInfo[] dirs = dir.GetDirectories();
+
+            // If the destination directory doesn't exist, create it
+            if (!Directory.Exists(destinationDir))
+            {
+                Directory.CreateDirectory(destinationDir);
+            }
+
+            // Get the files in the directory and copy them to the new location
+            FileInfo[] files = dir.GetFiles();
+            foreach (FileInfo file in files)
+            {
+                try
+                {
+                    string targetFilePath = Path.Combine(destinationDir, file.Name);
+                    file.CopyTo(targetFilePath, true);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error copying file '{file.FullName}': {ex.Message}");
+                }
+            }
+
+            // Copy subdirectories and their contents
+            foreach (DirectoryInfo subDir in dirs)
+            {
+                string newDestinationDir = Path.Combine(destinationDir, subDir.Name);
+                CopyDirectory(subDir.FullName, newDestinationDir);
+            }
+        }
+
 
 	
         private static void CleanTemporaryFiles()
@@ -1451,5 +1563,468 @@ Revision=1
                 Console.WriteLine($"Error setting Microsoft network client setting: {ex.Message}");
             }
         }
+
+
+        private static void ManageGroups()
+        {
+            Console.WriteLine("Starting group management...");
+
+            using (PrincipalContext ctx = new PrincipalContext(ContextType.Machine))
+            {
+                // Get all groups
+                GroupPrincipal groupPrincipal = new GroupPrincipal(ctx);
+                PrincipalSearcher searcher = new PrincipalSearcher(groupPrincipal);
+
+                foreach (var result in searcher.FindAll())
+                {
+                    GroupPrincipal group = (GroupPrincipal) result;
+                    if (group != null)
+                    {
+                        // Print group name
+                        Console.WriteLine($"\nGroup: {group.Name}");
+                        Console.WriteLine("Members:");
+
+                        // Get group members
+                        foreach (var member in group.Members)
+                        {
+                            Console.WriteLine($"- {member.SamAccountName}");
+                        }
+
+                        // Ask if the user wants to edit the group
+                        Console.WriteLine("Do you want to edit this group? (y/n)");
+                        string response = Console.ReadLine().Trim().ToLower();
+
+                        while (response != "y" && response != "n")
+                        {
+                            Console.WriteLine("Invalid input. Please enter 'y' or 'n'.");
+                            response = Console.ReadLine().Trim().ToLower();
+                        }
+
+                        if (response == "y")
+                        {
+                            // Add users to the group
+                            Console.WriteLine("Enter the names of users to add to the group (press Enter without typing a name to finish):");
+                            while (true)
+                            {
+                                Console.Write("User to add: ");
+                                string userToAdd = Console.ReadLine().Trim();
+                                if (string.IsNullOrWhiteSpace(userToAdd))
+                                    break;
+
+                                if (UserExists(userToAdd))
+                                {
+                                    UserPrincipal user = UserPrincipal.FindByIdentity(ctx, userToAdd);
+                                    if (!group.Members.Contains(user))
+                                    {
+                                        group.Members.Add(user);
+                                        Console.WriteLine($"User '{userToAdd}' added to group '{group.Name}'.");
+                                    }
+                                    else
+                                    {
+                                        Console.WriteLine($"User '{userToAdd}' is already a member of group '{group.Name}'.");
+                                    }
+                                }
+                                else
+                                {
+                                    Console.WriteLine("I can't do that. You probably typed it in wrong.");
+                                }
+                            }
+
+                            // Remove users from the group
+                            Console.WriteLine("Enter the names of users to remove from the group (press Enter without typing a name to finish):");
+                            while (true)
+                            {
+                                Console.Write("User to remove: ");
+                                string userToRemove = Console.ReadLine().Trim();
+                                if (string.IsNullOrWhiteSpace(userToRemove))
+                                    break;
+
+                                if (UserExists(userToRemove))
+                                {
+                                    UserPrincipal user = UserPrincipal.FindByIdentity(ctx, userToRemove);
+                                    if (group.Members.Contains(user))
+                                    {
+                                        group.Members.Remove(user);
+                                        Console.WriteLine($"User '{userToRemove}' removed from group '{group.Name}'.");
+                                    }
+                                    else
+                                    {
+                                        Console.WriteLine($"User '{userToRemove}' is not a member of group '{group.Name}'.");
+                                    }
+                                }
+                                else
+                                {
+                                    Console.WriteLine("I can't do that. You probably typed it in wrong.");
+                                }
+                            }
+
+                            // Save changes to the group
+                            group.Save();
+                        }
+                        else
+                        {
+                            Console.WriteLine($"Group '{group.Name}' left unchanged.");
+                        }
+                    }
+                }
+            }
+
+            Console.WriteLine("Group management completed.");
+        }
+
+        private static void MiscellaneousConfigurations()
+        {
+            Console.WriteLine("Starting miscellaneous configurations...");
+
+            // Adjust UAC settings
+            AdjustUACSettings();
+
+            // Disable unnecessary services
+            ManageServices();
+
+            // Set PowerShell execution policy
+            SetPowerShellExecutionPolicy();
+
+            // Configure advanced firewall rules
+            ConfigureFirewallRules();
+
+            // Run Windows Defender scan
+            RunWindowsDefenderScan();
+
+            // Enable security auditing via PowerShell
+            EnableSecurityAuditing();
+
+            // List possible backdoors
+            ListPossibleBackdoors();
+
+            Console.WriteLine("Miscellaneous configurations completed.");
+        }
+
+        private static void AdjustUACSettings()
+        {
+            Console.WriteLine("Adjusting User Account Control (UAC) settings...");
+
+            try
+            {
+                Process process = new Process();
+                process.StartInfo.FileName = "reg";
+                process.StartInfo.Arguments = @"add ""HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"" /v ConsentPromptBehaviorAdmin /t REG_DWORD /d 2 /f";
+                process.StartInfo.UseShellExecute = false;
+                process.StartInfo.CreateNoWindow = true;
+                process.Start();
+                process.WaitForExit();
+
+                if (process.ExitCode == 0)
+                {
+                    Console.WriteLine("UAC settings adjusted successfully.");
+                }
+                else
+                {
+                    Console.WriteLine("Error adjusting UAC settings.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error adjusting UAC settings: {ex.Message}");
+            }
+        }
+
+        private static void ManageServices()
+        {
+            Console.WriteLine("Listing all running services...");
+
+            try
+            {
+                ServiceController[] services = ServiceController.GetServices();
+
+                List<ServiceController> runningServices = new List<ServiceController>();
+
+                foreach (ServiceController service in services)
+                {
+                    if (service.Status == ServiceControllerStatus.Running)
+                    {
+                        runningServices.Add(service);
+                        Console.WriteLine($"- {service.DisplayName} ({service.ServiceName})");
+                    }
+                }
+
+                Console.WriteLine("Do you want to disable any of these services? (y/n)");
+                string response = Console.ReadLine().Trim().ToLower();
+
+                while (response != "y" && response != "n")
+                {
+                    Console.WriteLine("Invalid input. Please enter 'y' or 'n'.");
+                    response = Console.ReadLine().Trim().ToLower();
+                }
+
+                if (response == "y")
+                {
+                    Console.WriteLine("Enter the service names you want to disable (one at a time). Press Enter without typing a name to finish.");
+
+                    while (true)
+                    {
+                        Console.Write("Service to disable: ");
+                        string serviceName = Console.ReadLine().Trim();
+
+                        if (string.IsNullOrWhiteSpace(serviceName))
+                        {
+                            break;
+                        }
+
+                        ServiceController serviceToDisable = runningServices.Find(s => s.ServiceName.Equals(serviceName, StringComparison.OrdinalIgnoreCase) || s.DisplayName.Equals(serviceName, StringComparison.OrdinalIgnoreCase));
+
+                        if (serviceToDisable != null)
+                        {
+                            try
+                            {
+                                Console.WriteLine($"Disabling service '{serviceToDisable.DisplayName}'...");
+
+                                // Stop the service
+                                serviceToDisable.Stop();
+                                serviceToDisable.WaitForStatus(ServiceControllerStatus.Stopped);
+
+                                // Set the service startup type to Disabled
+                                using (RegistryKey key = Registry.LocalMachine.OpenSubKey($@"SYSTEM\CurrentControlSet\Services\{serviceToDisable.ServiceName}", true))
+                                {
+                                    if (key != null)
+                                    {
+                                        key.SetValue("Start", 4, RegistryValueKind.DWord); // 4 = Disabled
+                                    }
+                                }
+
+                                Console.WriteLine($"Service '{serviceToDisable.DisplayName}' disabled successfully.");
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"Error disabling service '{serviceToDisable.DisplayName}': {ex.Message}");
+                            }
+                        }
+                        else
+                        {
+                            Console.WriteLine("Service not found. Please check the name and try again.");
+                        }
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("No services were disabled.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error managing services: {ex.Message}");
+            }
+        }
+
+        private static void SetPowerShellExecutionPolicy()
+        {
+            Console.WriteLine("Setting PowerShell execution policy to RemoteSigned...");
+
+            try
+            {
+                Process process = new Process();
+                process.StartInfo.FileName = "powershell.exe";
+                process.StartInfo.Arguments = "-NoProfile -Command \"Set-ExecutionPolicy RemoteSigned -Scope LocalMachine -Force\"";
+                process.StartInfo.UseShellExecute = false;
+                process.StartInfo.CreateNoWindow = true;
+                process.Start();
+                process.WaitForExit();
+
+                if (process.ExitCode == 0)
+                {
+                    Console.WriteLine("PowerShell execution policy set to RemoteSigned.");
+                }
+                else
+                {
+                    Console.WriteLine("Error setting PowerShell execution policy.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error setting PowerShell execution policy: {ex.Message}");
+            }
+        }
+
+        private static void ConfigureFirewallRules()
+        {
+            Console.WriteLine("Configuring advanced firewall rules...");
+
+            try
+            {
+                // Example: Block inbound connections on port 23 (Telnet)
+                Process process = new Process();
+                process.StartInfo.FileName = "netsh";
+                process.StartInfo.Arguments = "advfirewall firewall add rule name=\"Block Telnet\" dir=in action=block protocol=TCP localport=23";
+                process.StartInfo.UseShellExecute = false;
+                process.StartInfo.CreateNoWindow = true;
+                process.Start();
+                process.WaitForExit();
+
+                if (process.ExitCode == 0)
+                {
+                    Console.WriteLine("Firewall rule 'Block Telnet' added successfully.");
+                }
+                else
+                {
+                    Console.WriteLine("Error adding firewall rule.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error configuring firewall rules: {ex.Message}");
+            }
+        }
+
+        private static void RunWindowsDefenderScan()
+        {
+            Console.WriteLine("Running Windows Defender full system scan...");
+
+            try
+            {
+                string defenderPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Windows Defender", "MpCmdRun.exe");
+                if (!File.Exists(defenderPath))
+                {
+                    defenderPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Windows Defender Antivirus", "MpCmdRun.exe");
+                }
+
+                if (!File.Exists(defenderPath))
+                {
+                    Console.WriteLine("Windows Defender not found on this system.");
+                    return;
+                }
+
+                Process process = new Process();
+                process.StartInfo.FileName = defenderPath;
+                process.StartInfo.Arguments = "-Scan -ScanType 2"; // 2 = Full scan
+                process.StartInfo.UseShellExecute = false;
+                process.StartInfo.CreateNoWindow = false; // Show window to see scan progress
+                process.Start();
+                process.WaitForExit();
+
+                if (process.ExitCode == 0)
+                {
+                    Console.WriteLine("Windows Defender scan completed successfully.");
+                }
+                else
+                {
+                    Console.WriteLine("Windows Defender scan encountered errors.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error running Windows Defender scan: {ex.Message}");
+            }
+        }
+
+        private static void EnableSecurityAuditing()
+        {
+            Console.WriteLine("Enabling security auditing for Detailed Tracking...");
+
+            try
+            {
+                Process process = new Process();
+                process.StartInfo.FileName = "auditpol.exe";
+                process.StartInfo.Arguments = "/set /subcategory:\"Detailed Tracking\" /success:enable";
+                process.StartInfo.UseShellExecute = false;
+                process.StartInfo.CreateNoWindow = true;
+                process.Start();
+                process.WaitForExit();
+
+                if (process.ExitCode == 0)
+                {
+                    Console.WriteLine("Security auditing enabled for Detailed Tracking.");
+                }
+                else
+                {
+                    Console.WriteLine("Error enabling security auditing.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error enabling security auditing: {ex.Message}");
+            }
+        }
+
+        private static void ListPossibleBackdoors()
+        {
+            Console.WriteLine("Listing possible backdoors...");
+
+            try
+            {
+                List<string> startupItems = new List<string>();
+
+                // Startup folders
+                string startupFolderAllUsers = Environment.GetFolderPath(Environment.SpecialFolder.CommonStartup);
+                string startupFolderCurrentUser = Environment.GetFolderPath(Environment.SpecialFolder.Startup);
+
+                // Add files from startup folders
+                if (Directory.Exists(startupFolderAllUsers))
+                {
+                    startupItems.AddRange(Directory.GetFiles(startupFolderAllUsers));
+                }
+
+                if (Directory.Exists(startupFolderCurrentUser))
+                {
+                    startupItems.AddRange(Directory.GetFiles(startupFolderCurrentUser));
+                }
+
+                // Registry Run keys
+                string[] runKeys = new string[]
+                {
+                    @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run",
+                    @"SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce",
+                    @"SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Run",
+                    @"SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\RunOnce"
+                };
+
+                foreach (string keyPath in runKeys)
+                {
+                    using (RegistryKey key = Registry.LocalMachine.OpenSubKey(keyPath))
+                    {
+                        if (key != null)
+                        {
+                            foreach (string valueName in key.GetValueNames())
+                            {
+                                object value = key.GetValue(valueName);
+                                if (value != null)
+                                {
+                                    startupItems.Add($"{valueName}: {value.ToString()}");
+                                }
+                            }
+                        }
+                    }
+
+                    using (RegistryKey key = Registry.CurrentUser.OpenSubKey(keyPath))
+                    {
+                        if (key != null)
+                        {
+                            foreach (string valueName in key.GetValueNames())
+                            {
+                                object value = key.GetValue(valueName);
+                                if (value != null)
+                                {
+                                    startupItems.Add($"{valueName}: {value.ToString()}");
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Console.WriteLine("Possible startup items (may include potential backdoors):");
+                foreach (string item in startupItems)
+                {
+                    Console.WriteLine(item);
+                }
+
+                Console.WriteLine("Press Enter to acknowledge that you have read the list of possible backdoors.");
+                Console.ReadLine();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error listing possible backdoors: {ex.Message}");
+            }
+        }
+
+
 
 }
