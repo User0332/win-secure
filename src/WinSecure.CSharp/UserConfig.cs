@@ -19,6 +19,7 @@ public class UserConfig
 		UpdateChrome();
 		HardenChrome();
 		DeleteBadApps();
+		ConfigureUserRightsAssignments();
 	}
 
 	private static void ApplySecurityPolicies()
@@ -296,7 +297,7 @@ MACHINE\System\CurrentControlSet\Control\Lsa\LimitBlankPasswordUse=4,1
 		}
 	}
 
-			private static void DeleteBadApps()
+	private static void DeleteBadApps()
 	{
 		Console.WriteLine("Deleting unwanted applications...");
 
@@ -334,78 +335,276 @@ MACHINE\System\CurrentControlSet\Control\Lsa\LimitBlankPasswordUse=4,1
 	{
 		try
 		{
-            using RegistryKey baseKey = RegistryKey.OpenBaseKey(hive, view);
-            using RegistryKey uninstallKey = baseKey.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall")!;
-            if (uninstallKey == null)
-                return false;
+			using RegistryKey baseKey = RegistryKey.OpenBaseKey(hive, view);
+			using RegistryKey uninstallKey = baseKey.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall")!;
+			if (uninstallKey == null)
+				return false;
 
-            foreach (string subKeyName in uninstallKey.GetSubKeyNames())
-            {
-                using RegistryKey appKey = uninstallKey.OpenSubKey(subKeyName)!;
-                string displayName = (string)appKey.GetValue("DisplayName")!;
-                string uninstallString = (string)appKey.GetValue("UninstallString")!;
+			foreach (string subKeyName in uninstallKey.GetSubKeyNames())
+			{
+				using RegistryKey appKey = uninstallKey.OpenSubKey(subKeyName)!;
+				string displayName = (string)appKey.GetValue("DisplayName")!;
+				string uninstallString = (string)appKey.GetValue("UninstallString")!;
 
-                if (!string.IsNullOrEmpty(displayName) &&
-                    displayName.IndexOf(appName, StringComparison.OrdinalIgnoreCase) >= 0)
-                {
-                    if (!string.IsNullOrEmpty(uninstallString))
-                    {
-                        Console.WriteLine($"Uninstalling {displayName}...");
+				if (!string.IsNullOrEmpty(displayName) &&
+					displayName.IndexOf(appName, StringComparison.OrdinalIgnoreCase) >= 0)
+				{
+					if (!string.IsNullOrEmpty(uninstallString))
+					{
+						Console.WriteLine($"Uninstalling {displayName}...");
 
-                        // Some uninstall strings may have additional arguments
-                        string arguments = "";
-                        string fileName = uninstallString;
+						// Some uninstall strings may have additional arguments
+						string arguments = "";
+						string fileName = uninstallString;
 
-                        if (uninstallString.StartsWith("\""))
-                        {
-                            int endQuote = uninstallString.IndexOf("\"", 1);
-                            if (endQuote > 0)
-                            {
-                                fileName = uninstallString.Substring(1, endQuote - 1);
-                                arguments = uninstallString.Substring(endQuote + 1).Trim();
-                            }
-                        }
-                        else
-                        {
-                            int firstSpace = uninstallString.IndexOf(" ");
-                            if (firstSpace > 0)
-                            {
-                                fileName = uninstallString.Substring(0, firstSpace);
-                                arguments = uninstallString.Substring(firstSpace + 1).Trim();
-                            }
-                        }
+						if (uninstallString.StartsWith("\""))
+						{
+							int endQuote = uninstallString.IndexOf("\"", 1);
+							if (endQuote > 0)
+							{
+								fileName = uninstallString.Substring(1, endQuote - 1);
+								arguments = uninstallString.Substring(endQuote + 1).Trim();
+							}
+						}
+						else
+						{
+							int firstSpace = uninstallString.IndexOf(" ");
+							if (firstSpace > 0)
+							{
+								fileName = uninstallString.Substring(0, firstSpace);
+								arguments = uninstallString.Substring(firstSpace + 1).Trim();
+							}
+						}
 
-                        // Add silent/unattended flags if necessary
-                        if (!arguments.Contains("/quiet") && !arguments.Contains("/silent"))
-                        {
-                            arguments += " /quiet /norestart";
-                        }
+						// Add silent/unattended flags if necessary
+						if (!arguments.Contains("/quiet") && !arguments.Contains("/silent"))
+						{
+							arguments += " /quiet /norestart";
+						}
 
-                        try
-                        {
-                            Process uninstallProcess = new Process();
-                            uninstallProcess.StartInfo.FileName = fileName;
-                            uninstallProcess.StartInfo.Arguments = arguments;
-                            uninstallProcess.StartInfo.UseShellExecute = false;
-                            uninstallProcess.StartInfo.CreateNoWindow = true;
-                            uninstallProcess.Start();
-                            uninstallProcess.WaitForExit();
+						try
+						{
+							Process uninstallProcess = new Process();
+							uninstallProcess.StartInfo.FileName = fileName;
+							uninstallProcess.StartInfo.Arguments = arguments;
+							uninstallProcess.StartInfo.UseShellExecute = false;
+							uninstallProcess.StartInfo.CreateNoWindow = true;
+							uninstallProcess.Start();
+							uninstallProcess.WaitForExit();
 
-                            Console.WriteLine($"{displayName} uninstalled successfully.");
-                        }
-                        catch (Exception ex)
-                        {
-                            Console.WriteLine($"Error uninstalling {displayName}: {ex.Message}");
-                        }
-                        return true;
-                    }
-                }
-            }
-        }
+							Console.WriteLine($"{displayName} uninstalled successfully.");
+						}
+						catch (Exception ex)
+						{
+							Console.WriteLine($"Error uninstalling {displayName}: {ex.Message}");
+						}
+						return true;
+					}
+				}
+			}
+		}
 		catch (Exception ex)
 		{
 			Console.WriteLine($"Error accessing registry: {ex.Message}");
 		}
 		return false;
 	}
+
+	private static void ConfigureUserRightsAssignments()
+	{
+		Console.WriteLine("Configuring User Rights Assignments...");
+
+		bool isDomainController = IsDomainController();
+
+		string infContent = @"
+[Unicode]
+Unicode=yes
+[Version]
+signature=""$CHICAGO$""
+Revision=1
+[Privilege Rights]
+";
+
+		// 2.2.1 Ensure 'Access Credential Manager as a trusted caller' is set to 'No One'
+		infContent += "SeTrustedCredManAccessPrivilege =\n";
+
+		// 2.2.2 / 2.2.3 Ensure 'Access this computer from the network'
+		if (isDomainController)
+		{
+			// DC only
+			infContent += "SeNetworkLogonRight = *S-1-5-32-544,*S-1-5-11,*S-1-5-9\n"; // Administrators, Authenticated Users, ENTERPRISE DOMAIN CONTROLLERS
+		}
+		else
+		{
+			// Member Server
+			infContent += "SeNetworkLogonRight = *S-1-5-32-544,*S-1-5-11\n"; // Administrators, Authenticated Users
+		}
+
+		// 2.2.4 Ensure 'Act as part of the operating system' is set to 'No One'
+		infContent += "SeTcbPrivilege =\n";
+
+		// 2.2.5 Ensure 'Add workstations to domain' is set to 'Administrators' (DC only)
+		if (isDomainController)
+		{
+			infContent += "SeMachineAccountPrivilege = *S-1-5-32-544\n"; // Administrators
+		}
+
+		// 2.2.6 Ensure 'Adjust memory quotas for a process' is set to 'Administrators, LOCAL SERVICE, NETWORK SERVICE'
+		infContent += "SeIncreaseQuotaPrivilege = *S-1-5-32-544,*S-1-5-19,*S-1-5-20\n"; // Administrators, LOCAL SERVICE, NETWORK SERVICE
+
+		// 2.2.7 Ensure 'Allow log on locally' is set to 'Administrators'
+		infContent += "SeInteractiveLogonRight = *S-1-5-32-544\n"; // Administrators
+
+		// 2.2.8 / 2.2.9 Ensure 'Allow log on through Remote Desktop Services'
+		if (isDomainController)
+		{
+			// DC only
+			infContent += "SeRemoteInteractiveLogonRight = *S-1-5-32-544\n"; // Administrators
+		}
+		else
+		{
+			// Member Server
+			infContent += "SeRemoteInteractiveLogonRight = *S-1-5-32-544,*S-1-5-32-555\n"; // Administrators, Remote Desktop Users
+		}
+
+		// 2.2.10 Ensure 'Back up files and directories' is set to 'Administrators'
+		infContent += "SeBackupPrivilege = *S-1-5-32-544\n"; // Administrators
+
+		// 2.2.11 Ensure 'Change the system time' is set to 'Administrators, LOCAL SERVICE'
+		infContent += "SeSystemtimePrivilege = *S-1-5-32-544,*S-1-5-19\n"; // Administrators, LOCAL SERVICE
+
+		// 2.2.12 Ensure 'Change the time zone' is set to 'Administrators, LOCAL SERVICE'
+		infContent += "SeTimeZonePrivilege = *S-1-5-32-544,*S-1-5-19\n"; // Administrators, LOCAL SERVICE
+
+		// 2.2.13 Ensure 'Create a pagefile' is set to 'Administrators'
+		infContent += "SeCreatePagefilePrivilege = *S-1-5-32-544\n"; // Administrators
+
+		// 2.2.14 Ensure 'Create a token object' is set to 'No One'
+		infContent += "SeCreateTokenPrivilege =\n";
+
+		// 2.2.15 Ensure 'Create global objects' is set to 'Administrators, LOCAL SERVICE, NETWORK SERVICE, SERVICE'
+		infContent += "SeCreateGlobalPrivilege = *S-1-5-32-544,*S-1-5-19,*S-1-5-20,*S-1-5-6\n"; // Administrators, LOCAL SERVICE, NETWORK SERVICE, SERVICE
+
+		// 2.2.16 Ensure 'Create permanent shared objects' is set to 'No One'
+		infContent += "SeCreatePermanentPrivilege =\n";
+
+		// 2.2.17 / 2.2.18 Ensure 'Create symbolic links'
+		if (isDomainController)
+		{
+			// DC only
+			infContent += "SeCreateSymbolicLinkPrivilege = *S-1-5-32-544\n"; // Administrators
+		}
+		else
+		{
+			// Member Server
+			infContent += "SeCreateSymbolicLinkPrivilege = *S-1-5-32-544,*S-1-5-83-0\n"; // Administrators, NT VIRTUAL MACHINE\Virtual Machines
+		}
+
+		// 2.2.19 Ensure 'Debug programs' is set to 'Administrators'
+		infContent += "SeDebugPrivilege = *S-1-5-32-544\n"; // Administrators
+
+		// 2.2.20 / 2.2.21 Ensure 'Deny access to this computer from the network'
+		if (isDomainController)
+		{
+			// DC only
+			infContent += "SeDenyNetworkLogonRight = *S-1-5-32-546\n"; // Guests
+		}
+		else
+		{
+			// Member Server
+			infContent += "SeDenyNetworkLogonRight = *S-1-5-32-546,*S-1-5-114\n"; // Guests, Local account and member of Administrators group
+		}
+
+		// 2.2.22 Ensure 'Deny log on as a batch job' to include 'Guests'
+		infContent += "SeDenyBatchLogonRight = *S-1-5-32-546\n"; // Guests
+
+		// 2.2.23 Ensure 'Deny log on as a service' to include 'Guests'
+		infContent += "SeDenyServiceLogonRight = *S-1-5-32-546\n"; // Guests
+
+		// 2.2.24 Ensure 'Deny log on locally' to include 'Guests'
+		infContent += "SeDenyInteractiveLogonRight = *S-1-5-32-546\n"; // Guests
+
+		// 2.2.25 / 2.2.26 Ensure 'Deny log on through Remote Desktop Services'
+		if (isDomainController)
+		{
+			// DC only
+			infContent += "SeDenyRemoteInteractiveLogonRight = *S-1-5-32-546\n"; // Guests
+		}
+		else
+		{
+			// Member Server
+			infContent += "SeDenyRemoteInteractiveLogonRight = *S-1-5-32-546,*S-1-5-113\n"; // Guests, Local account
+		}
+
+		// Additional policies can be added here following the same pattern...
+
+		// Write the INF content to a temporary file
+		string tempInfPath = Path.Combine(Path.GetTempPath(), "user_rights.inf");
+
+		try
+		{
+			File.WriteAllText(tempInfPath, infContent);
+
+			// Apply the security template using secedit.exe
+			Process process = new Process();
+			process.StartInfo.FileName = "secedit.exe";
+			process.StartInfo.Arguments = $"/configure /db secedit.sdb /cfg \"{tempInfPath}\" /overwrite /quiet";
+			process.StartInfo.UseShellExecute = false;
+			process.StartInfo.CreateNoWindow = true;
+			process.Start();
+
+			process.WaitForExit();
+
+			if (process.ExitCode != 0)
+			{
+				Console.WriteLine("Error configuring user rights assignments.");
+			}
+			else
+			{
+				Console.WriteLine("User rights assignments configured successfully.");
+			}
+		}
+		catch (Exception ex)
+		{
+			Console.WriteLine($"Error applying user rights assignments: {ex.Message}");
+		}
+		finally
+		{
+			// Clean up temporary INF file
+			if (File.Exists(tempInfPath))
+			{
+				File.Delete(tempInfPath);
+			}
+		}
+	}
+
+	private static bool IsDomainController()
+	{
+		Console.WriteLine("Checking if the machine is a Domain Controller...");
+
+		try
+		{
+			using (RegistryKey key = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Control\ProductOptions"))
+			{
+				if (key != null)
+				{
+					string productType = key.GetValue("ProductType") as string;
+					if (!string.IsNullOrEmpty(productType) && productType.Equals("LanmanNT", StringComparison.OrdinalIgnoreCase))
+					{
+						Console.WriteLine("Machine is a Domain Controller.");
+						return true;
+					}
+				}
+			}
+		}
+		catch (Exception ex)
+		{
+			Console.WriteLine($"Error checking domain controller status: {ex.Message}");
+		}
+
+		Console.WriteLine("Machine is not a Domain Controller.");
+		return false;
+	}
+
+
 }
