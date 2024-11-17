@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net;
 using Microsoft.Win32;
 using System.DirectoryServices.AccountManagement;
+using System.Collections.Generic;
 
 
 
@@ -25,7 +26,6 @@ public class UserConfig
 		ConfigureUserAccounts();
 		ApplySecurityPolicies();
 		CleanTemporaryFiles();
-
 	}
 
 
@@ -1242,7 +1242,8 @@ Revision=1
             }
         }
 
-	        private static void CleanTemporaryFiles()
+	
+        private static void CleanTemporaryFiles()
         {
             Console.WriteLine("Starting cleanup of temporary files...");
 
