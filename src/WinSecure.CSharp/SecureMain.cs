@@ -8,7 +8,8 @@ namespace WinSecure.CSharp
 		{
 			Console.WriteLine("Starting Windows Hardening Script...");
 			Console.WriteLine("Are you sure you want to continue? (Enter to continue)");
-			Console.ReadLine();
+			if (Console.ReadLine() != string.Empty) return 0;
+
 			UserConfig.Configure();
 			Console.WriteLine("Ate that up ;)");
 
