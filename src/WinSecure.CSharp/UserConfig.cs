@@ -20,6 +20,7 @@ public class UserConfig
 		HardenChrome();
 		DeleteBadApps();
 		ConfigureUserRightsAssignments();
+		ConfigureSecurityOptions();
 	}
 
 	private static void ApplySecurityPolicies()
@@ -578,33 +579,156 @@ Revision=1
 		}
 	}
 
-	private static bool IsDomainController()
-	{
-		Console.WriteLine("Checking if the machine is a Domain Controller...");
 
-		try
-		{
-			using (RegistryKey key = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Control\ProductOptions"))
-			{
-				if (key != null)
-				{
-					string productType = (string) key.GetValue("ProductType");
-					if (!string.IsNullOrEmpty(productType) && productType.Equals("LanmanNT", StringComparison.OrdinalIgnoreCase))
-					{
-						Console.WriteLine("Machine is a Domain Controller.");
-						return true;
-					}
-				}
-			}
-		}
-		catch (Exception ex)
-		{
-			Console.WriteLine($"Error checking domain controller status: {ex.Message}");
-		}
+        private static void ConfigureSecurityOptions()
+        {
+            Console.WriteLine("Configuring Security Options...");
 
-		Console.WriteLine("Machine is not a Domain Controller.");
-		return false;
-	}
+            bool isDomainController = IsDomainController();
+
+            string infContent = @"
+[Unicode]
+Unicode=yes
+[Version]
+signature=""$CHICAGO$""
+Revision=1
+[Registry Values]
+";
+
+            // Accounts Policies
+            // 2.3.1.1 Ensure 'Accounts: Block Microsoft accounts' is set to 'Users can't add or log on with Microsoft accounts'
+            infContent += @"MACHINE\Software\Microsoft\Windows\CurrentVersion\Policies\System\NoConnectedUser = 4,3
+";
+
+            // 2.3.1.2 Ensure 'Accounts: Guest account status' is set to 'Disabled' (MS only)
+            if (!isDomainController)
+            {
+                infContent += @"MACHINE\System\CurrentControlSet\Control\Lsa\LimitBlankPasswordUse = 4,1
+";
+            }
+
+            // 2.3.1.3 Ensure 'Accounts: Limit local account use of blank passwords to console logon only' is set to 'Enabled'
+            infContent += @"MACHINE\System\CurrentControlSet\Control\Lsa\LimitBlankPasswordUse = 4,1
+";
+
+            // 2.3.1.4 Configure 'Accounts: Rename administrator account' (Automated)
+            string newAdminName = "SecuredAdmin"; // Change this to your desired administrator account name
+            infContent += $@"MACHINE\SAM\Sam\Domains\Account\Users\Names\{newAdminName} = 1,""{newAdminName}""
+";
+
+            // 2.3.1.5 Configure 'Accounts: Rename guest account' (Automated)
+            string newGuestName = "SecuredGuest"; // Change this to your desired guest account name
+            infContent += $@"MACHINE\SAM\Sam\Domains\Account\Users\Names\{newGuestName} = 1,""{newGuestName}""
+";
+
+            // Audit Policies
+            // 2.3.2.1 Ensure 'Audit: Force audit policy subcategory settings...' is set to 'Enabled'
+            infContent += @"MACHINE\System\CurrentControlSet\Control\Lsa\SCENoApplyLegacyAuditPolicy = 4,1
+";
+
+            // 2.3.2.2 Ensure 'Audit: Shut down system immediately if unable to log security audits' is set to 'Disabled'
+            infContent += @"MACHINE\System\CurrentControlSet\Control\Lsa\CrashOnAuditFail = 4,0
+";
+
+            // Devices Policies
+            // 2.3.4.1 Ensure 'Devices: Allowed to format and eject removable media' is set to 'Administrators'
+            infContent += @"MACHINE\Software\Microsoft\Windows NT\CurrentVersion\Winlogon\AllocateDASD = 1,""0""
+";
+
+            // 2.3.4.2 Ensure 'Devices: Prevent users from installing printer drivers' is set to 'Enabled'
+            infContent += @"MACHINE\System\CurrentControlSet\Control\Print\Providers\LanMan Print Services\Servers\AddPrinterDrivers = 4,1
+";
+
+            // Interactive Logon Policies
+            // 2.3.7.1 Ensure 'Interactive logon: Do not require CTRL+ALT+DEL' is set to 'Disabled'
+            infContent += @"MACHINE\Software\Microsoft\Windows\CurrentVersion\Policies\System\DisableCAD = 4,0
+";
+
+            // 2.3.7.2 Ensure 'Interactive logon: Don't display last signed-in' is set to 'Enabled'
+            infContent += @"MACHINE\Software\Microsoft\Windows\CurrentVersion\Policies\System\DontDisplayLastUserName = 4,1
+";
+
+            // 2.3.7.3 Ensure 'Interactive logon: Machine inactivity limit' is set to '900 or fewer second(s), but not 0'
+            int inactivityLimit = 900; // Set to 900 seconds
+            infContent += $@"MACHINE\Software\Microsoft\Windows\CurrentVersion\Policies\System\InactivityTimeoutSecs = 4,{inactivityLimit}
+";
+
+            // User Account Control Policies
+            // 2.3.17.1 Ensure 'User Account Control: Admin Approval Mode for the Built-in Administrator account' is set to 'Enabled'
+            infContent += @"MACHINE\Software\Microsoft\Windows\CurrentVersion\Policies\System\FilterAdministratorToken = 4,1
+";
+
+            // 2.3.17.2 Ensure 'User Account Control: Behavior of the elevation prompt for administrators in Admin Approval Mode' is set to 'Prompt for consent on the secure desktop' or higher
+            infContent += @"MACHINE\Software\Microsoft\Windows\CurrentVersion\Policies\System\ConsentPromptBehaviorAdmin = 4,2
+";
+
+            // Add additional policies as needed, following the same pattern
+
+            // Write the INF content to a temporary file
+            string tempInfPath = Path.Combine(Path.GetTempPath(), "security_options.inf");
+
+            try
+            {
+                File.WriteAllText(tempInfPath, infContent);
+
+                // Apply the security template using secedit.exe
+                Process process = new Process();
+                process.StartInfo.FileName = "secedit.exe";
+                process.StartInfo.Arguments = $"/configure /db secedit.sdb /cfg \"{tempInfPath}\" /overwrite /quiet";
+                process.StartInfo.UseShellExecute = false;
+                process.StartInfo.CreateNoWindow = true;
+                process.Start();
+
+                process.WaitForExit();
+
+                if (process.ExitCode != 0)
+                {
+                    Console.WriteLine("Error configuring security options.");
+                }
+                else
+                {
+                    Console.WriteLine("Security options configured successfully.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error applying security options: {ex.Message}");
+            }
+            finally
+            {
+                // Clean up temporary INF file
+                if (File.Exists(tempInfPath))
+                {
+                    File.Delete(tempInfPath);
+                }
+            }
+        }
+
+        private static bool IsDomainController()
+        {
+            Console.WriteLine("Checking if the machine is a Domain Controller...");
+
+            try
+            {
+            using RegistryKey key = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Control\ProductOptions");
+            if (key != null)
+            {
+                string productType = (string)key.GetValue("ProductType");
+                if (!string.IsNullOrEmpty(productType) && productType.Equals("LanmanNT", StringComparison.OrdinalIgnoreCase))
+                {
+                    Console.WriteLine("Machine is a Domain Controller.");
+                    return true;
+                }
+            }
+        }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error checking domain controller status: {ex.Message}");
+            }
+
+            Console.WriteLine("Machine is not a Domain Controller.");
+            return false;
+        }
 
 
 }
