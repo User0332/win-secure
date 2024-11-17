@@ -1,7 +1,13 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Net;
 using Microsoft.Win32;
+using System.Collections.Generic;
+using System.Security.Principal;
+using System.DirectoryServices.AccountManagement;
+
+
 
 #pragma warning disable CA1416 // Validate platform compatibility
 
@@ -18,9 +24,11 @@ public class UserConfig
 		UpdateWindows();
 		UpdateChrome();
 		HardenChrome();
-		DeleteBadApps();
+		ManageApplications();
 		ConfigureUserRightsAssignments();
 		ConfigureSecurityOptions();
+		ConfigureUserAccounts();
+
 	}
 
 	private static void ApplySecurityPolicies()
@@ -298,118 +306,267 @@ MACHINE\System\CurrentControlSet\Control\Lsa\LimitBlankPasswordUse=4,1
 		}
 	}
 
-	private static void DeleteBadApps()
-	{
-		Console.WriteLine("Deleting unwanted applications...");
+        private static void ManageApplications()
+        {
+            Console.WriteLine("Starting application management...");
 
-		string[] badApps = new string[]
-		{
-			"Python",
-			"CCleaner64",
-			"CCleaner",
-			"Wireshark",
-			"Npcap",
-			"Pong",
-			"PCCleaner",
-			"NetStumbler",
-			"TeamViewer"
-		};
+            RemoveUnwantedApplications();
+            UpdateUtilities();
 
-		foreach (string appName in badApps)
-		{
-			bool appFound = false;
+            Console.WriteLine("Application management completed.");
+        }
 
-			// Search in both 32-bit and 64-bit registry views
-			appFound |= UninstallApplication(appName, RegistryHive.LocalMachine, RegistryView.Registry64);
-			appFound |= UninstallApplication(appName, RegistryHive.LocalMachine, RegistryView.Registry32);
-			appFound |= UninstallApplication(appName, RegistryHive.CurrentUser, RegistryView.Registry64);
-			appFound |= UninstallApplication(appName, RegistryHive.CurrentUser, RegistryView.Registry32);
+        private static void RemoveUnwantedApplications()
+        {
+            Console.WriteLine("Removing unwanted applications...");
 
-			if (!appFound)
-			{
-				Console.WriteLine($"{appName} wasn't found.");
-			}
-		}
-	}
+            string[] unwantedApps = new string[]
+            {
+                "Python",
+                "CCleaner64",
+                "CCleaner",
+                "Wireshark",
+                "Npcap",
+                "Pong",
+                "PCCleaner",
+                "NetStumbler",
+                "TeamViewer",
+                "nmap",
+                "Burp Suite Community Edition",
+                "Jellyfin Media Player",
+                "AnyDesk",
+                "Ophcrack"
+            };
 
-	private static bool UninstallApplication(string appName, RegistryHive hive, RegistryView view)
-	{
-		try
-		{
-			using RegistryKey baseKey = RegistryKey.OpenBaseKey(hive, view);
-			using RegistryKey uninstallKey = baseKey.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall")!;
-			if (uninstallKey == null)
-				return false;
+            foreach (string appName in unwantedApps)
+            {
+                Console.WriteLine($"Attempting to uninstall {appName}...");
+                bool appFound = false;
 
-			foreach (string subKeyName in uninstallKey.GetSubKeyNames())
-			{
-				using RegistryKey appKey = uninstallKey.OpenSubKey(subKeyName)!;
-				string displayName = (string)appKey.GetValue("DisplayName")!;
-				string uninstallString = (string)appKey.GetValue("UninstallString")!;
+                // Search in both 32-bit and 64-bit registry views
+                appFound |= UninstallApplication(appName, RegistryHive.LocalMachine, RegistryView.Registry64);
+                appFound |= UninstallApplication(appName, RegistryHive.LocalMachine, RegistryView.Registry32);
+                appFound |= UninstallApplication(appName, RegistryHive.CurrentUser, RegistryView.Registry64);
+                appFound |= UninstallApplication(appName, RegistryHive.CurrentUser, RegistryView.Registry32);
 
-				if (!string.IsNullOrEmpty(displayName) &&
-					displayName.IndexOf(appName, StringComparison.OrdinalIgnoreCase) >= 0)
-				{
-					if (!string.IsNullOrEmpty(uninstallString))
-					{
-						Console.WriteLine($"Uninstalling {displayName}...");
+                if (!appFound)
+                {
+                    Console.WriteLine($"{appName} wasn't found.");
+                }
+            }
 
-						// Some uninstall strings may have additional arguments
-						string arguments = "";
-						string fileName = uninstallString;
+            Console.WriteLine("Unwanted applications removal completed.");
+        }
 
-						if (uninstallString.StartsWith("\""))
-						{
-							int endQuote = uninstallString.IndexOf("\"", 1);
-							if (endQuote > 0)
-							{
-								fileName = uninstallString.Substring(1, endQuote - 1);
-								arguments = uninstallString.Substring(endQuote + 1).Trim();
-							}
-						}
-						else
-						{
-							int firstSpace = uninstallString.IndexOf(" ");
-							if (firstSpace > 0)
-							{
-								fileName = uninstallString.Substring(0, firstSpace);
-								arguments = uninstallString.Substring(firstSpace + 1).Trim();
-							}
-						}
+        private static void UpdateUtilities()
+        {
+            Console.WriteLine("Updating utilities...");
 
-						// Add silent/unattended flags if necessary
-						if (!arguments.Contains("/quiet") && !arguments.Contains("/silent"))
-						{
-							arguments += " /quiet /norestart";
-						}
+            UpdateNotepadPlusPlus();
+            Update7Zip();
 
-						try
-						{
-							Process uninstallProcess = new Process();
-							uninstallProcess.StartInfo.FileName = fileName;
-							uninstallProcess.StartInfo.Arguments = arguments;
-							uninstallProcess.StartInfo.UseShellExecute = false;
-							uninstallProcess.StartInfo.CreateNoWindow = true;
-							uninstallProcess.Start();
-							uninstallProcess.WaitForExit();
+            Console.WriteLine("Utilities update completed.");
+        }
 
-							Console.WriteLine($"{displayName} uninstalled successfully.");
-						}
-						catch (Exception ex)
-						{
-							Console.WriteLine($"Error uninstalling {displayName}: {ex.Message}");
-						}
-						return true;
-					}
-				}
-			}
-		}
-		catch (Exception ex)
-		{
-			Console.WriteLine($"Error accessing registry: {ex.Message}");
-		}
-		return false;
-	}
+        private static void UpdateNotepadPlusPlus()
+        {
+            Console.WriteLine("Updating Notepad++...");
+
+            try
+            {
+                string? notepadPlusPlusPath = GetInstalledApplicationPath("Notepad++");
+                if (string.IsNullOrEmpty(notepadPlusPlusPath))
+                {
+                    Console.WriteLine("Notepad++ is not installed on this system.");
+                    return;
+                }
+
+                string downloadUrl = "https://github.com/notepad-plus-plus/notepad-plus-plus/releases/latest/download/npp.8.5.7.Installer.x64.exe"; // Update URL as needed
+                string tempInstallerPath = Path.Combine(Path.GetTempPath(), "npp_installer.exe");
+
+                Console.WriteLine("Downloading the latest Notepad++ installer...");
+                using (WebClient client = new())
+                {
+                    client.DownloadFile(downloadUrl, tempInstallerPath);
+                }
+
+                Console.WriteLine("Running the Notepad++ installer...");
+                Process process = new Process();
+                process.StartInfo.FileName = tempInstallerPath;
+                process.StartInfo.Arguments = "/S"; // Silent installation
+                process.StartInfo.UseShellExecute = false;
+                process.StartInfo.CreateNoWindow = true;
+                process.Start();
+                process.WaitForExit();
+
+                Console.WriteLine("Notepad++ updated successfully.");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error updating Notepad++: {ex.Message}");
+            }
+        }
+
+        private static void Update7Zip()
+        {
+            Console.WriteLine("Updating 7-Zip...");
+
+            try
+            {
+                string? sevenZipPath = GetInstalledApplicationPath("7-Zip");
+                if (string.IsNullOrEmpty(sevenZipPath))
+                {
+                    Console.WriteLine("7-Zip is not installed on this system.");
+                    return;
+                }
+
+                string downloadUrl = "https://www.7-zip.org/a/7z2301-x64.exe"; // Update URL as needed
+                string tempInstallerPath = Path.Combine(Path.GetTempPath(), "7zip_installer.exe");
+
+                Console.WriteLine("Downloading the latest 7-Zip installer...");
+                using (WebClient client = new WebClient())
+                {
+                    client.DownloadFile(downloadUrl, tempInstallerPath);
+                }
+
+                Console.WriteLine("Running the 7-Zip installer...");
+                Process process = new Process();
+                process.StartInfo.FileName = tempInstallerPath;
+                process.StartInfo.Arguments = "/S"; // Silent installation
+                process.StartInfo.UseShellExecute = false;
+                process.StartInfo.CreateNoWindow = true;
+                process.Start();
+                process.WaitForExit();
+
+                Console.WriteLine("7-Zip updated successfully.");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error updating 7-Zip: {ex.Message}");
+            }
+        }
+
+        private static string? GetInstalledApplicationPath(string appName)
+        {
+            string displayName;
+            string installLocation;
+
+            // Search in both 32-bit and 64-bit registry views
+            RegistryView[] views = { RegistryView.Registry64, RegistryView.Registry32 };
+            foreach (RegistryView view in views)
+            {
+            using RegistryKey baseKey = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
+            using RegistryKey uninstallKey = baseKey.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall");
+            if (uninstallKey == null)
+                continue;
+
+            foreach (string subKeyName in uninstallKey.GetSubKeyNames())
+            {
+                using RegistryKey subKey = uninstallKey.OpenSubKey(subKeyName);
+                displayName = (string)subKey.GetValue("DisplayName");
+                installLocation = (string)subKey.GetValue("InstallLocation");
+
+                if (!string.IsNullOrEmpty(displayName) &&
+                    displayName.IndexOf(appName, StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    if (!string.IsNullOrEmpty(installLocation))
+                    {
+                        return installLocation;
+                    }
+                }
+            }
+        }
+
+            return null;
+        }
+
+        private static bool UninstallApplication(string appName, RegistryHive hive, RegistryView view)
+        {
+            try
+            {
+                using (RegistryKey baseKey = RegistryKey.OpenBaseKey(hive, view))
+                {
+                    using (RegistryKey uninstallKey = baseKey.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"))
+                    {
+                        if (uninstallKey == null)
+                            return false;
+
+                        foreach (string subKeyName in uninstallKey.GetSubKeyNames())
+                        {
+                            using (RegistryKey appKey = uninstallKey.OpenSubKey(subKeyName))
+                            {
+                                string displayName = (string) appKey.GetValue("DisplayName");
+                                string uninstallString = (string) appKey.GetValue("UninstallString");
+
+                                if (!string.IsNullOrEmpty(displayName) &&
+                                    displayName.IndexOf(appName, StringComparison.OrdinalIgnoreCase) >= 0)
+                                {
+                                    if (!string.IsNullOrEmpty(uninstallString))
+                                    {
+                                        Console.WriteLine($"Uninstalling {displayName}...");
+
+                                        // Some uninstall strings may have additional arguments
+                                        string arguments = "";
+                                        string fileName = uninstallString;
+
+                                        if (uninstallString.StartsWith("\""))
+                                        {
+                                            int endQuote = uninstallString.IndexOf("\"", 1);
+                                            if (endQuote > 0)
+                                            {
+                                                fileName = uninstallString.Substring(1, endQuote - 1);
+                                                arguments = uninstallString.Substring(endQuote + 1).Trim();
+                                            }
+                                        }
+                                        else
+                                        {
+                                            int firstSpace = uninstallString.IndexOf(" ");
+                                            if (firstSpace > 0)
+                                            {
+                                                fileName = uninstallString.Substring(0, firstSpace);
+                                                arguments = uninstallString.Substring(firstSpace + 1).Trim();
+                                            }
+                                        }
+
+                                        // Add silent/unattended flags if necessary
+                                        if (!arguments.Contains("/quiet") && !arguments.Contains("/silent"))
+                                        {
+                                            arguments += " /quiet /norestart";
+                                        }
+
+                                        try
+                                        {
+                                            Process uninstallProcess = new Process();
+                                            uninstallProcess.StartInfo.FileName = fileName;
+                                            uninstallProcess.StartInfo.Arguments = arguments;
+                                            uninstallProcess.StartInfo.UseShellExecute = false;
+                                            uninstallProcess.StartInfo.CreateNoWindow = true;
+                                            uninstallProcess.Start();
+                                            uninstallProcess.WaitForExit();
+
+                                            Console.WriteLine($"{displayName} uninstalled successfully.");
+                                        }
+                                        catch (Exception ex)
+                                        {
+                                            Console.WriteLine($"Error uninstalling {displayName}: {ex.Message}");
+                                        }
+                                        return true;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error accessing registry: {ex.Message}");
+            }
+            return false;
+        }
+
+
+
 
 	private static void ConfigureUserRightsAssignments()
 	{
@@ -728,6 +885,238 @@ Revision=1
 
             Console.WriteLine("Machine is not a Domain Controller.");
             return false;
+        }
+
+        private static void ConfigureUserAccounts()
+        {
+            Console.WriteLine("Configuring user accounts...");
+
+            List<string> adminUsers = new List<string>();
+            List<string> standardUsers = new List<string>();
+
+            // Prompt for admin users
+            Console.WriteLine("Enter the names of admin users (press Enter without typing a name to finish):");
+            while (true)
+            {
+                Console.Write("Admin user name: ");
+                string input = Console.ReadLine();
+                if (string.IsNullOrWhiteSpace(input))
+                    break;
+                adminUsers.Add(input.Trim());
+            }
+
+            // Prompt for standard users
+            Console.WriteLine("Enter the names of standard users (press Enter without typing a name to finish):");
+            while (true)
+            {
+                Console.Write("Standard user name: ");
+                string input = Console.ReadLine();
+                if (string.IsNullOrWhiteSpace(input))
+                    break;
+                standardUsers.Add(input.Trim());
+            }
+
+            // Get all local users
+            List<string> allLocalUsers = new List<string>();
+            using (PrincipalContext ctx = new PrincipalContext(ContextType.Machine))
+            {
+                UserPrincipal userPrincipal = new UserPrincipal(ctx);
+                PrincipalSearcher searcher = new PrincipalSearcher(userPrincipal);
+
+                foreach (var result in searcher.FindAll())
+                {
+                    allLocalUsers.Add(result.SamAccountName);
+                }
+            }
+
+            // Process admin users
+            foreach (string userName in adminUsers)
+            {
+                if (UserExists(userName))
+                {
+                    if (IsUserInGroup(userName, "Administrators"))
+                    {
+                        // User is already an admin
+                        continue;
+                    }
+                    else
+                    {
+                        Console.WriteLine($"User '{userName}' is a standard user and should be an admin. Do you want to fix this (y/n)?");
+                        string response = Console.ReadLine();
+                        if (response.Equals("y", StringComparison.OrdinalIgnoreCase))
+                        {
+                            AddUserToGroup(userName, "Administrators");
+                            Console.WriteLine($"User '{userName}' has been added to the Administrators group.");
+                        }
+                    }
+                }
+                else
+                {
+                    Console.WriteLine($"User '{userName}' does not exist. Do you want to create this user (y/n)?");
+                    string response = Console.ReadLine();
+                    if (response.Equals("y", StringComparison.OrdinalIgnoreCase))
+                    {
+                        CreateLocalUser(userName, true);
+                        Console.WriteLine($"Admin user '{userName}' has been created.");
+                    }
+                }
+            }
+
+            // Process standard users
+            foreach (string userName in standardUsers)
+            {
+                if (UserExists(userName))
+                {
+                    if (!IsUserInGroup(userName, "Administrators"))
+                    {
+                        // User is already a standard user
+                        continue;
+                    }
+                    else
+                    {
+                        Console.WriteLine($"User '{userName}' is an admin and should be a standard user. Do you want to fix this (y/n)?");
+                        string response = Console.ReadLine();
+                        if (response.Equals("y", StringComparison.OrdinalIgnoreCase))
+                        {
+                            RemoveUserFromGroup(userName, "Administrators");
+                            Console.WriteLine($"User '{userName}' has been removed from the Administrators group.");
+                        }
+                    }
+                }
+                else
+                {
+                    Console.WriteLine($"User '{userName}' does not exist. Do you want to create this user (y/n)?");
+                    string response = Console.ReadLine();
+                    if (response.Equals("y", StringComparison.OrdinalIgnoreCase))
+                    {
+                        CreateLocalUser(userName, false);
+                        Console.WriteLine($"Standard user '{userName}' has been created.");
+                    }
+                }
+            }
+
+            // Find users not specified by the administrator
+            HashSet<string> specifiedUsers = new HashSet<string>(adminUsers, StringComparer.OrdinalIgnoreCase);
+            specifiedUsers.UnionWith(standardUsers);
+
+            foreach (string userName in allLocalUsers)
+            {
+                if (!specifiedUsers.Contains(userName) && !IsSystemAccount(userName))
+                {
+                    Console.WriteLine($"User '{userName}' exists but was not specified. Do you want to delete this account (y/n)?");
+                    string response = Console.ReadLine();
+                    if (response.Equals("y", StringComparison.OrdinalIgnoreCase))
+                    {
+                        DeleteLocalUser(userName);
+                        Console.WriteLine($"User '{userName}' has been deleted.");
+                    }
+                }
+            }
+
+            Console.WriteLine("User accounts configuration completed.");
+        }
+
+        private static bool UserExists(string userName)
+        {
+            using (PrincipalContext ctx = new PrincipalContext(ContextType.Machine))
+            {
+                UserPrincipal user = UserPrincipal.FindByIdentity(ctx, userName);
+                return user != null;
+            }
+        }
+
+        private static bool IsUserInGroup(string userName, string groupName)
+        {
+            using (PrincipalContext ctx = new PrincipalContext(ContextType.Machine))
+            {
+                UserPrincipal user = UserPrincipal.FindByIdentity(ctx, userName);
+                GroupPrincipal group = GroupPrincipal.FindByIdentity(ctx, groupName);
+
+                if (user != null && group != null)
+                {
+                    return user.IsMemberOf(group);
+                }
+                return false;
+            }
+        }
+
+        private static void AddUserToGroup(string userName, string groupName)
+        {
+            using (PrincipalContext ctx = new PrincipalContext(ContextType.Machine))
+            {
+                UserPrincipal user = UserPrincipal.FindByIdentity(ctx, userName);
+                GroupPrincipal group = GroupPrincipal.FindByIdentity(ctx, groupName);
+
+                if (user != null && group != null)
+                {
+                    group.Members.Add(user);
+                    group.Save();
+                }
+            }
+        }
+
+        private static void RemoveUserFromGroup(string userName, string groupName)
+        {
+            using (PrincipalContext ctx = new PrincipalContext(ContextType.Machine))
+            {
+                UserPrincipal user = UserPrincipal.FindByIdentity(ctx, userName);
+                GroupPrincipal group = GroupPrincipal.FindByIdentity(ctx, groupName);
+
+                if (user != null && group != null)
+                {
+                    group.Members.Remove(user);
+                    group.Save();
+                }
+            }
+        }
+
+        private static void CreateLocalUser(string userName, bool isAdmin)
+        {
+            using (PrincipalContext ctx = new PrincipalContext(ContextType.Machine))
+            {
+                UserPrincipal user = new UserPrincipal(ctx);
+                user.SetPassword("Password123!"); // You may want to prompt for a password or generate one
+                user.DisplayName = userName;
+                user.Name = userName;
+                user.UserCannotChangePassword = false;
+                user.PasswordNeverExpires = false;
+                user.Save();
+
+                if (isAdmin)
+                {
+                    AddUserToGroup(userName, "Administrators");
+                }
+                else
+                {
+                    AddUserToGroup(userName, "Users");
+                }
+            }
+        }
+
+        private static void DeleteLocalUser(string userName)
+        {
+            using (PrincipalContext ctx = new PrincipalContext(ContextType.Machine))
+            {
+                UserPrincipal user = UserPrincipal.FindByIdentity(ctx, userName);
+                if (user != null)
+                {
+                    user.Delete();
+                }
+            }
+        }
+
+        private static bool IsSystemAccount(string userName)
+        {
+            // List of common system accounts to exclude
+            string[] systemAccounts = new string[]
+            {
+                "Administrator",
+                "Guest",
+                "DefaultAccount",
+                "WDAGUtilityAccount"
+            };
+
+            return Array.Exists(systemAccounts, account => account.Equals(userName, StringComparison.OrdinalIgnoreCase));
         }
 
 
