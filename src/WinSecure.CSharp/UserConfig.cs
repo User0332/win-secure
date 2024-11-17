@@ -1688,8 +1688,6 @@ Revision=1
             // Configure advanced firewall rules
             ConfigureFirewallRules();
 
-            // Run Windows Defender scan
-            RunWindowsDefenderScan();
 
             // Enable security auditing via PowerShell
             EnableSecurityAuditing();
@@ -1875,46 +1873,6 @@ Revision=1
             }
         }
 
-        private static void RunWindowsDefenderScan()
-        {
-            Console.WriteLine("Running Windows Defender full system scan...");
-
-            try
-            {
-                string defenderPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Windows Defender", "MpCmdRun.exe");
-                if (!File.Exists(defenderPath))
-                {
-                    defenderPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Windows Defender Antivirus", "MpCmdRun.exe");
-                }
-
-                if (!File.Exists(defenderPath))
-                {
-                    Console.WriteLine("Windows Defender not found on this system.");
-                    return;
-                }
-
-                Process process = new Process();
-                process.StartInfo.FileName = defenderPath;
-                process.StartInfo.Arguments = "-Scan -ScanType 2"; // 2 = Full scan
-                process.StartInfo.UseShellExecute = false;
-                process.StartInfo.CreateNoWindow = false; // Show window to see scan progress
-                process.Start();
-                process.WaitForExit();
-
-                if (process.ExitCode == 0)
-                {
-                    Console.WriteLine("Windows Defender scan completed successfully.");
-                }
-                else
-                {
-                    Console.WriteLine("Windows Defender scan encountered errors.");
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error running Windows Defender scan: {ex.Message}");
-            }
-        }
 
         private static void EnableSecurityAuditing()
         {
