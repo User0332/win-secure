@@ -1,10 +1,6 @@
-using System;
 using System.Diagnostics;
-using System.IO;
 using System.Net;
 using Microsoft.Win32;
-using System.Collections.Generic;
-using System.Security.Principal;
 using System.DirectoryServices.AccountManagement;
 
 
@@ -17,7 +13,6 @@ public class UserConfig
 {
 	public static void Configure()
 	{
-		ApplySecurityPolicies();
 		DisableAutoPlay();
 		DisableDeveloperMode();
 		DisableRemoteAccess();
@@ -28,8 +23,10 @@ public class UserConfig
 		ConfigureUserRightsAssignments();
 		ConfigureSecurityOptions();
 		ConfigureUserAccounts();
+		ApplySecurityPolicies();
 
 	}
+
 
 	private static void ApplySecurityPolicies()
 	{
@@ -84,6 +81,28 @@ MACHINE\System\CurrentControlSet\Control\Lsa\LimitBlankPasswordUse=4,1
 		process.StartInfo.CreateNoWindow = true;
 		process.Start();
 
+		            // Ensure that passwords for all users can expire
+            SetPasswordExpirationForAllUsers();
+
+            // Prompt the administrator to enter a safe password for all users
+            Console.WriteLine("Please enter a safe password to set for all users:");
+            string password = ReadPassword();
+
+            // Confirm the password
+            Console.WriteLine("Please confirm the password:");
+            string confirmPassword = ReadPassword();
+
+            if (password != confirmPassword)
+            {
+                Console.WriteLine("Passwords do not match. Aborting password change.");
+                return;
+            }
+
+            // Set the password for all users
+            SetPasswordForAllUsers(password);
+
+            Console.WriteLine("Security policies applied successfully.");
+
 		process.WaitForExit();
 
 		if (process.ExitCode != 0)
@@ -97,7 +116,124 @@ MACHINE\System\CurrentControlSet\Control\Lsa\LimitBlankPasswordUse=4,1
 
 		// Clean up temporary INF file
 		File.Delete(tempInfPath);
+
+		
+
+
+
 	}
+
+        private static void SetPasswordExpirationForAllUsers()
+        {
+            Console.WriteLine("Setting password expiration for all users...");
+
+            try
+            {
+                using (PrincipalContext ctx = new PrincipalContext(ContextType.Machine))
+                {
+                    UserPrincipal userPrincipal = new UserPrincipal(ctx);
+                    PrincipalSearcher searcher = new PrincipalSearcher(userPrincipal);
+
+                    foreach (var result in searcher.FindAll())
+                    {
+                    if (result is UserPrincipal user)
+                    {
+                        // Exclude built-in accounts
+                        if (IsSystemAccount(user.SamAccountName))
+                            continue;
+
+                        user.PasswordNeverExpires = false;
+                        user.Save();
+                    }
+                }
+                }
+
+                Console.WriteLine("Password expiration enabled for all users.");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error setting password expiration: {ex.Message}");
+            }
+        }
+
+        private static void SetPasswordForAllUsers(string password)
+        {
+            Console.WriteLine("Setting password for all users...");
+
+            try
+            {
+                using (PrincipalContext ctx = new(ContextType.Machine))
+                {
+                    UserPrincipal userPrincipal = new(ctx);
+                    PrincipalSearcher searcher = new(userPrincipal);
+
+                    foreach (var result in searcher.FindAll())
+                    {
+                    if (result is UserPrincipal user)
+                    {
+                        // Exclude built-in accounts
+                        if (IsSystemAccount(user.SamAccountName))
+                            continue;
+
+                        user.SetPassword(password);
+                        user.Save();
+                    }
+                }
+                }
+
+                Console.WriteLine("Password set for all users.");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error setting passwords: {ex.Message}");
+            }
+        }
+
+        private static string ReadPassword()
+        {
+            string password = "";
+            ConsoleKeyInfo info;
+
+            do
+            {
+                info = Console.ReadKey(true);
+                if (info.Key != ConsoleKey.Enter)
+                {
+                    if (info.Key == ConsoleKey.Backspace)
+                    {
+                        if (password.Length > 0)
+                        {
+                            password = password.Remove(password.Length - 1);
+                            Console.Write("\b \b");
+                        }
+                    }
+                    else if (!char.IsControl(info.KeyChar))
+                    {
+                        password += info.KeyChar;
+                        Console.Write("*");
+                    }
+                }
+            } while (info.Key != ConsoleKey.Enter);
+
+            Console.WriteLine();
+            return password;
+        }
+
+        private static bool IsSystemAccount(string userName)
+        {
+            // List of common system accounts to exclude
+            string[] systemAccounts = [
+                "Administrator",
+                "Guest",
+                "DefaultAccount",
+                "WDAGUtilityAccount",
+                "krbtgt" // For domain controllers
+			];
+
+            return Array.Exists(systemAccounts, account => account.Equals(userName, StringComparison.OrdinalIgnoreCase));
+        }
+
+
 
 	private static void DisableAutoPlay()
 	{
@@ -1104,20 +1240,4 @@ Revision=1
                 }
             }
         }
-
-        private static bool IsSystemAccount(string userName)
-        {
-            // List of common system accounts to exclude
-            string[] systemAccounts = new string[]
-            {
-                "Administrator",
-                "Guest",
-                "DefaultAccount",
-                "WDAGUtilityAccount"
-            };
-
-            return Array.Exists(systemAccounts, account => account.Equals(userName, StringComparison.OrdinalIgnoreCase));
-        }
-
-
 }
