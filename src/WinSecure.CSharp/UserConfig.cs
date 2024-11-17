@@ -2427,28 +2427,30 @@ Revision=1
             SetRegistryValue(keyPath, valueName, valueData, RegistryValueKind.String);
         }
 
-        private static void ConfigurePointAndPrintRestrictions()
+
+    private static void ConfigurePointAndPrintRestrictions()
+    {
+        Console.WriteLine("Configuring Point and Print Restrictions...");
+
+        string keyPath = @"SOFTWARE\Policies\Microsoft\Windows NT\Printers\PointAndPrint";
+
+        using (RegistryKey key = Registry.LocalMachine.CreateSubKey(keyPath))
         {
-            Console.WriteLine("Configuring Point and Print Restrictions...");
-
-            string keyPath = @"SOFTWARE\Policies\Microsoft\Windows NT\Printers\PointAndPrint";
-
-            using (RegistryKey key = Registry.LocalMachine.CreateSubKey(keyPath))
+            if (key != null)
             {
-                if (key != null)
-                {
-                    key.SetValue("NoWarningNoElevationOnInstall", 0, RegistryValueKind.DWord);
-                    key.SetValue("UpdatePromptSettings", 0, RegistryValueKind.DWord);
-                    key.SetValue("Restricted", 1, RegistryValueKind.DWord);
-                    key.SetValue("TrustedServers", "", RegistryValueKind.MultiString);
-                    Console.WriteLine($"Point and Print Restrictions configured at '{keyPath}'.");
-                }
-                else
-                {
-                    Console.WriteLine($"Failed to open or create registry key '{keyPath}'.");
-                }
+                key.SetValue("NoWarningNoElevationOnInstall", 0, RegistryValueKind.DWord);
+                key.SetValue("UpdatePromptSettings", 0, RegistryValueKind.DWord);
+                key.SetValue("Restricted", 1, RegistryValueKind.DWord);
+                key.SetValue("TrustedServers", new string[] { }, RegistryValueKind.MultiString); // Corrected
+                Console.WriteLine($"Point and Print Restrictions configured at '{keyPath}'.");
+            }
+            else
+            {
+                Console.WriteLine($"Failed to open or create registry key '{keyPath}'.");
             }
         }
+    }
+
 
 
         private static void TemplateP2()
