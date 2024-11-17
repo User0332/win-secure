@@ -24,6 +24,7 @@ public class UserConfig
 		ConfigureSecurityOptions();
 		ConfigureUserAccounts();
 		ApplySecurityPolicies();
+		CleanTemporaryFiles();
 
 	}
 
@@ -1240,4 +1241,147 @@ Revision=1
                 }
             }
         }
+
+	        private static void CleanTemporaryFiles()
+        {
+            Console.WriteLine("Starting cleanup of temporary files...");
+
+            DeleteTempFiles();
+
+            List<string> mediaFiles = FindMediaFiles();
+
+            if (mediaFiles.Count > 0)
+            {
+                Console.WriteLine("Found the following media files (.mp3 and .mp4):");
+                foreach (string file in mediaFiles)
+                {
+                    Console.WriteLine(file);
+                }
+
+                Console.WriteLine("Do you want to delete all (a) or none (n) of these files? (a/n)");
+                string response = Console.ReadLine().Trim().ToLower();
+
+                while (response != "a" && response != "n")
+                {
+                    Console.WriteLine("Invalid input. Please enter 'a' to delete all or 'n' to delete none:");
+                    response = Console.ReadLine().Trim().ToLower();
+                }
+
+                if (response == "a")
+                {
+                    DeleteMediaFiles(mediaFiles);
+                    Console.WriteLine("All media files have been deleted.");
+                }
+                else
+                {
+                    Console.WriteLine("No media files were deleted.");
+                }
+            }
+            else
+            {
+                Console.WriteLine("No media files (.mp3 and .mp4) were found.");
+            }
+
+            Console.WriteLine("Temporary files cleanup completed.");
+        }
+
+        private static void DeleteTempFiles()
+        {
+            Console.WriteLine("Deleting temporary files...");
+
+            try
+            {
+                string tempPath = Path.GetTempPath();
+
+                DirectoryInfo tempDir = new DirectoryInfo(tempPath);
+
+                foreach (FileInfo file in tempDir.GetFiles())
+                {
+                    try
+                    {
+                        file.Delete();
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Unable to delete file: {file.FullName}. Error: {ex.Message}");
+                    }
+                }
+
+                foreach (DirectoryInfo dir in tempDir.GetDirectories())
+                {
+                    try
+                    {
+                        dir.Delete(true);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Unable to delete directory: {dir.FullName}. Error: {ex.Message}");
+                    }
+                }
+
+                Console.WriteLine("Temporary files deleted successfully.");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error deleting temporary files: {ex.Message}");
+            }
+        }
+
+        private static List<string> FindMediaFiles()
+        {
+            Console.WriteLine("Searching for .mp3 and .mp4 files...");
+
+            List<string> mediaFiles = new List<string>();
+
+            try
+            {
+                // Get all logical drives
+                foreach (DriveInfo drive in DriveInfo.GetDrives())
+                {
+                    // Only search fixed drives (e.g., hard disks)
+                    if (drive.DriveType == DriveType.Fixed && drive.IsReady)
+                    {
+                        Console.WriteLine($"Searching drive {drive.Name}...");
+                        try
+                        {
+                            mediaFiles.AddRange(Directory.GetFiles(drive.RootDirectory.FullName, "*.mp3", SearchOption.AllDirectories));
+                            mediaFiles.AddRange(Directory.GetFiles(drive.RootDirectory.FullName, "*.mp4", SearchOption.AllDirectories));
+                        }
+                        catch (UnauthorizedAccessException)
+                        {
+                            Console.WriteLine($"Access denied to drive {drive.Name}. Skipping...");
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"Error searching drive {drive.Name}: {ex.Message}");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error finding media files: {ex.Message}");
+            }
+
+            return mediaFiles;
+        }
+
+        private static void DeleteMediaFiles(List<string> mediaFiles)
+        {
+            Console.WriteLine("Deleting media files...");
+
+            foreach (string file in mediaFiles)
+            {
+                try
+                {
+                    File.Delete(file);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Unable to delete file: {file}. Error: {ex.Message}");
+                }
+            }
+        }
+
+
 }
