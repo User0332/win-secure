@@ -588,7 +588,7 @@ Revision=1
 			{
 				if (key != null)
 				{
-					string productType = key.GetValue("ProductType") as string;
+					string productType = (string) key.GetValue("ProductType");
 					if (!string.IsNullOrEmpty(productType) && productType.Equals("LanmanNT", StringComparison.OrdinalIgnoreCase))
 					{
 						Console.WriteLine("Machine is a Domain Controller.");
