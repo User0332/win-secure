@@ -26,6 +26,7 @@ public class UserConfig
 		ConfigureUserAccounts();
 		ApplySecurityPolicies();
 		CleanTemporaryFiles();
+		ConfigureFirewallAndNetworkSettings();
 	}
 
 
@@ -1384,5 +1385,71 @@ Revision=1
             }
         }
 
+        private static void ConfigureFirewallAndNetworkSettings()
+        {
+            Console.WriteLine("Configuring firewall and network settings...");
+
+            // Turn on the firewall
+            EnableFirewall();
+
+            // Set 'Microsoft network client: Digitally sign communications (always)' to 'Enabled'
+            EnableMicrosoftNetworkClientDigitallySign();
+
+            Console.WriteLine("Firewall and network settings configured.");
+        }
+
+        private static void EnableFirewall()
+        {
+            Console.WriteLine("Enabling Windows Firewall...");
+
+            try
+            {
+                Process process = new Process();
+                process.StartInfo.FileName = "netsh";
+                process.StartInfo.Arguments = "advfirewall set allprofiles state on";
+                process.StartInfo.UseShellExecute = false;
+                process.StartInfo.CreateNoWindow = true;
+                process.Start();
+                process.WaitForExit();
+
+                if (process.ExitCode == 0)
+                {
+                    Console.WriteLine("Windows Firewall enabled successfully.");
+                }
+                else
+                {
+                    Console.WriteLine("Error enabling Windows Firewall.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error enabling Windows Firewall: {ex.Message}");
+            }
+        }
+
+        private static void EnableMicrosoftNetworkClientDigitallySign()
+        {
+            Console.WriteLine("Enabling Microsoft network client: Digitally sign communications (always)...");
+
+            try
+            {
+                using (RegistryKey key = Registry.LocalMachine.OpenSubKey(@"System\CurrentControlSet\Services\LanmanWorkstation\Parameters", true))
+                {
+                    if (key != null)
+                    {
+                        key.SetValue("RequireSecuritySignature", 1, RegistryValueKind.DWord);
+                        Console.WriteLine("Microsoft network client: Digitally sign communications (always) is enabled.");
+                    }
+                    else
+                    {
+                        Console.WriteLine("Failed to open registry key for Microsoft network client settings.");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error setting Microsoft network client setting: {ex.Message}");
+            }
+        }
 
 }
