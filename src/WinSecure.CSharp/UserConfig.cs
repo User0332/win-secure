@@ -34,6 +34,10 @@ public class UserConfig
 		ConfigureFirewallAndNetworkSettings();
         ManageGroups();
         MiscellaneousConfigurations();
+        ConfigureAdvancedFirewallSettings();
+        ConfigureAdvancedAuditPolicies();
+        TemplateP1();
+        TemplateP2();
 	}
 
 
@@ -1983,6 +1987,588 @@ Revision=1
             }
         }
 
+        private static void ConfigureAdvancedFirewallSettings()
+        {
+            Console.WriteLine("Configuring Windows Firewall with Advanced Security settings...");
 
+            // Configure Domain Profile settings
+            ConfigureFirewallProfile("Domain");
+
+            // Configure Private Profile settings
+            ConfigureFirewallProfile("Private");
+
+            // Configure Public Profile settings
+            ConfigureFirewallProfile("Public");
+
+            Console.WriteLine("Windows Firewall with Advanced Security settings configured.");
+        }
+
+        private static void ConfigureFirewallProfile(string profile)
+        {
+            Console.WriteLine($"\nConfiguring {profile} Profile...");
+
+            try
+            {
+                // Enable Firewall state
+                RunNetshCommand($"advfirewall set {profile}profile state on");
+
+                // Set Inbound connections to Block (default)
+                RunNetshCommand($"advfirewall set {profile}profile firewallpolicy blockinbound,allowoutbound");
+
+                // Disable Display a notification
+                RunNetshCommand($"advfirewall set {profile}profile settings inboundusernotification disable");
+
+                // Set Logging options
+                string logFileName = $"%SystemRoot%\\System32\\logfiles\\firewall\\{profile.ToLower()}fw.log";
+                RunNetshCommand($"advfirewall set {profile}profile logging filename \"{logFileName}\"");
+                RunNetshCommand($"advfirewall set {profile}profile logging maxfilesize 16384");
+                RunNetshCommand($"advfirewall set {profile}profile logging droppedconnections enable");
+                RunNetshCommand($"advfirewall set {profile}profile logging allowedconnections enable");
+
+                // Additional settings for Public Profile
+                if (profile.Equals("Public", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Apply local firewall rules: No
+                    RunNetshCommand($"advfirewall set {profile}profile settings localfirewallrules disable");
+
+                    // Apply local connection security rules: No
+                    RunNetshCommand($"advfirewall set {profile}profile settings localconsecrules disable");
+                }
+
+                Console.WriteLine($"{profile} Profile configured successfully.");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error configuring {profile} Profile: {ex.Message}");
+            }
+        }
+
+        private static void RunNetshCommand(string arguments)
+        {
+            Process process = new Process();
+            process.StartInfo.FileName = "netsh";
+            process.StartInfo.Arguments = arguments;
+            process.StartInfo.UseShellExecute = false;
+            process.StartInfo.CreateNoWindow = true;
+            process.Start();
+            process.WaitForExit();
+
+            if (process.ExitCode != 0)
+            {
+                throw new Exception($"netsh command failed: netsh {arguments}");
+            }
+        }
+
+        private static void ConfigureAdvancedAuditPolicies()
+        {
+            Console.WriteLine("Configuring Advanced Audit Policy settings...");
+
+            bool isDomainController = IsDomainController();
+
+            // Account Logon
+            Console.WriteLine("\nConfiguring Account Logon policies...");
+            SetAuditPolicy("Credential Validation", "Success and Failure");
+            if (isDomainController)
+            {
+                SetAuditPolicy("Kerberos Authentication Service", "Success and Failure");
+                SetAuditPolicy("Kerberos Service Ticket Operations", "Success and Failure");
+            }
+
+            // Account Management
+            Console.WriteLine("\nConfiguring Account Management policies...");
+            SetAuditPolicy("Application Group Management", "Success and Failure");
+            if (isDomainController)
+            {
+                SetAuditPolicy("Computer Account Management", "Success");
+                SetAuditPolicy("Distribution Group Management", "Success");
+                SetAuditPolicy("Other Account Management Events", "Success");
+            }
+            SetAuditPolicy("Security Group Management", "Success");
+            SetAuditPolicy("User Account Management", "Success and Failure");
+
+            // Detailed Tracking
+            Console.WriteLine("\nConfiguring Detailed Tracking policies...");
+            SetAuditPolicy("Plug and Play Events", "Success");
+            SetAuditPolicy("Process Creation", "Success");
+
+            // DS Access
+            if (isDomainController)
+            {
+                Console.WriteLine("\nConfiguring Directory Service Access policies...");
+                SetAuditPolicy("Directory Service Access", "Failure");
+                SetAuditPolicy("Directory Service Changes", "Success");
+            }
+
+            // Logon/Logoff
+            Console.WriteLine("\nConfiguring Logon/Logoff policies...");
+            SetAuditPolicy("Account Lockout", "Failure");
+            SetAuditPolicy("Group Membership", "Success");
+            SetAuditPolicy("Logoff", "Success");
+            SetAuditPolicy("Logon", "Success and Failure");
+            SetAuditPolicy("Other Logon/Logoff Events", "Success and Failure");
+            SetAuditPolicy("Special Logon", "Success");
+
+            // Object Access
+            Console.WriteLine("\nConfiguring Object Access policies...");
+            SetAuditPolicy("Detailed File Share", "Failure");
+            SetAuditPolicy("File Share", "Success and Failure");
+            SetAuditPolicy("Other Object Access Events", "Success and Failure");
+            SetAuditPolicy("Removable Storage", "Success and Failure");
+
+            // Policy Change
+            Console.WriteLine("\nConfiguring Policy Change policies...");
+            SetAuditPolicy("Audit Policy Change", "Success");
+            SetAuditPolicy("Authentication Policy Change", "Success");
+            SetAuditPolicy("Authorization Policy Change", "Success");
+            SetAuditPolicy("MPSSVC Rule-Level Policy Change", "Success and Failure");
+            SetAuditPolicy("Other Policy Change Events", "Failure");
+
+            // Privilege Use
+            Console.WriteLine("\nConfiguring Privilege Use policies...");
+            SetAuditPolicy("Sensitive Privilege Use", "Success and Failure");
+
+            // System
+            Console.WriteLine("\nConfiguring System policies...");
+            SetAuditPolicy("IPsec Driver", "Success and Failure");
+            SetAuditPolicy("Other System Events", "Success and Failure");
+            SetAuditPolicy("Security State Change", "Success");
+            SetAuditPolicy("Security System Extension", "Success");
+            SetAuditPolicy("System Integrity", "Success and Failure");
+
+            Console.WriteLine("Advanced Audit Policy settings configured.");
+        }
+
+        private static void SetAuditPolicy(string subcategory, string setting)
+        {
+            Console.WriteLine($"Setting '{subcategory}' to '{setting}'...");
+
+            try
+            {
+                string successFlag = setting.Contains("Success") ? "enable" : "disable";
+                string failureFlag = setting.Contains("Failure") ? "enable" : "disable";
+
+                Process process = new Process();
+                process.StartInfo.FileName = "auditpol.exe";
+                process.StartInfo.Arguments = $"/set /subcategory:\"{subcategory}\" /success:{successFlag} /failure:{failureFlag}";
+                process.StartInfo.UseShellExecute = false;
+                process.StartInfo.CreateNoWindow = true;
+                process.Start();
+                process.WaitForExit();
+
+                if (process.ExitCode == 0)
+                {
+                    Console.WriteLine($"'{subcategory}' set to '{setting}'.");
+                }
+                else
+                {
+                    Console.WriteLine($"Error setting '{subcategory}' to '{setting}'.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Exception setting '{subcategory}': {ex.Message}");
+            }
+        }
+
+        private static void TemplateP1()
+        {
+            Console.WriteLine("Starting TemplateP1 configurations...");
+
+            // 18.1 Control Panel
+            ConfigureControlPanelSettings();
+
+            // 18.3 LAPS
+            ConfigureLAPS();
+
+            // 18.4 MS Security Guide
+            ConfigureMSSecurityGuide();
+
+            // 18.5 MSS (Legacy)
+            ConfigureMSSLegacy();
+
+            // 18.6 Network
+            ConfigureNetworkSettings();
+
+            // 18.7 Printers
+            ConfigurePrinterSettings();
+
+            // 18.8 Start Menu and Taskbar
+            ConfigureStartMenuAndTaskbar();
+
+            Console.WriteLine("TemplateP1 configurations completed.");
+        }
+
+        private static void ConfigureControlPanelSettings()
+        {
+            Console.WriteLine("Configuring Control Panel settings...");
+
+            // 18.1.1.1 Prevent enabling lock screen camera
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows\Personalization", "NoLockScreenCamera", 1);
+
+            // 18.1.1.2 Prevent enabling lock screen slide show
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows\Personalization", "NoLockScreenSlideshow", 1);
+
+            // 18.1.2.2 Allow users to enable online speech recognition services
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Speech", "AllowSpeechProcessing", 0);
+
+            // 18.1.3 Allow Online Tips (L2)
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows\CloudContent", "DisableOnlineTips", 1);
+        }
+
+        private static void ConfigureLAPS()
+        {
+            Console.WriteLine("Configuring LAPS settings...");
+
+            // Ensure LAPS AdmPwd GPO Extension / CSE is installed
+            // Note: This requires the LAPS MSI installer to be executed; cannot be installed via registry.
+            Console.WriteLine("Ensure LAPS AdmPwd GPO Extension / CSE is installed manually.");
+
+            // 18.3.2 Do not allow password expiration time longer than required by policy
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft Services\AdmPwd", "PwdExpirationProtectionEnabled", 1);
+
+            // 18.3.3 Enable Local Admin Password Management
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft Services\AdmPwd", "EnableLocalAdminPasswordManagement", 1);
+
+            // 18.3.4 Password Settings: Password Complexity
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft Services\AdmPwd", "PasswordComplexity", 4);
+
+            // 18.3.5 Password Settings: Password Length
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft Services\AdmPwd", "PasswordLength", 15);
+
+            // 18.3.6 Password Settings: Password Age (Days)
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft Services\AdmPwd", "PasswordAgeDays", 30);
+        }
+
+        private static void ConfigureMSSecurityGuide()
+        {
+            Console.WriteLine("Configuring MS Security Guide settings...");
+
+            // 18.4.1 Apply UAC restrictions to local accounts on network logons
+            SetRegistryValue(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System", "LocalAccountTokenFilterPolicy", 0);
+
+            // 18.4.2 Configure RPC packet level privacy setting for incoming connections
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows NT\Rpc", "EnableAuthEpResolution", 1);
+
+            // 18.4.3 Configure SMB v1 client driver
+            DisableSMBv1Client();
+
+            // 18.4.4 Configure SMB v1 server
+            DisableSMBv1Server();
+
+            // 18.4.5 Enable Structured Exception Handling Overwrite Protection (SEHOP)
+            SetRegistryValue(@"SYSTEM\CurrentControlSet\Control\Session Manager\Kernel", "DisableExceptionChainValidation", 0);
+
+            // 18.4.6 NetBT NodeType configuration
+            SetRegistryValue(@"SYSTEM\CurrentControlSet\Services\NetBT\Parameters", "NodeType", 2);
+
+            // 18.4.7 WDigest Authentication
+            SetRegistryValue(@"SYSTEM\CurrentControlSet\Control\SecurityProviders\WDigest", "UseLogonCredential", 0);
+        }
+
+        private static void ConfigureMSSLegacy()
+        {
+            Console.WriteLine("Configuring MSS (Legacy) settings...");
+
+            // 18.5.1 AutoAdminLogon
+            SetRegistryValue(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon", "AutoAdminLogon", "0");
+
+            // 18.5.2 DisableIPSourceRouting IPv6
+            SetRegistryValue(@"SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters", "DisableIPSourceRouting", 2);
+
+            // 18.5.3 DisableIPSourceRouting
+            SetRegistryValue(@"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters", "DisableIPSourceRouting", 2);
+
+            // 18.5.4 EnableICMPRedirect
+            SetRegistryValue(@"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters", "EnableICMPRedirect", 0);
+
+            // 18.5.6 NoNameReleaseOnDemand
+            SetRegistryValue(@"SYSTEM\CurrentControlSet\Services\NetBT\Parameters", "NoNameReleaseOnDemand", 1);
+
+            // 18.5.8 SafeDllSearchMode
+            SetRegistryValue(@"SYSTEM\CurrentControlSet\Control\Session Manager", "SafeDllSearchMode", 1);
+
+            // 18.5.9 ScreenSaverGracePeriod
+            SetRegistryValue(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon", "ScreenSaverGracePeriod", 5);
+
+            // 18.5.12 WarningLevel
+            SetRegistryValue(@"SYSTEM\CurrentControlSet\Services\Eventlog\Security", "WarningLevel", 90);
+        }
+
+        private static void ConfigureNetworkSettings()
+        {
+            Console.WriteLine("Configuring Network settings...");
+
+            // 18.6.4.1 Configure DNS over HTTPS (DoH) name resolution
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows NT\DNSClient", "EnableAutoDoh", 2);
+
+            // 18.6.4.2 Configure NetBIOS settings
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows NT\DNSClient", "EnableMulticast", 0);
+
+            // 18.6.4.3 Turn off multicast name resolution
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows NT\DNSClient", "EnableMulticast", 0);
+
+            // 18.6.8.1 Enable insecure guest logons
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows\LanmanWorkstation", "AllowInsecureGuestAuth", 0);
+
+            // 18.6.9.1 Turn on Mapper I/O (LLTDIO) driver (L2)
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows\LLTD", "AllowLLTDIOOnDomain", 0);
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows\LLTD", "AllowLLTDIOOnPublicNet", 0);
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows\LLTD", "EnableLLTDIO", 0);
+
+            // 18.6.9.2 Turn on Responder (RSPNDR) driver (L2)
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows\LLTD", "AllowRspndrOnDomain", 0);
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows\LLTD", "AllowRspndrOnPublicNet", 0);
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows\LLTD", "EnableRspndr", 0);
+
+            // 18.6.10.2 Turn off Microsoft Peer-to-Peer Networking Services (L2)
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Peernet", "Disabled", 1);
+
+            // 18.6.11.2 Prohibit installation and configuration of Network Bridge on your DNS domain network
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows\Network Connections", "NC_AllowNetBridge_NLA", 0);
+
+            // 18.6.11.3 Prohibit use of Internet Connection Sharing on your DNS domain network
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows\Network Connections", "NC_ShowSharedAccessUI", 0);
+
+            // 18.6.11.4 Require domain users to elevate when setting a network's location
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows\Network Connections", "NC_StdDomainUserSetLocation", 1);
+
+            // 18.6.14.1 Hardened UNC Paths
+            ConfigureHardenedUNCPaths();
+
+            // 18.6.19.2.1 Disable IPv6 (L2)
+            SetRegistryValue(@"SYSTEM\CurrentControlSet\Services\TCPIP6\Parameters", "DisabledComponents", 0xFF);
+
+            // 18.6.20.1 Configuration of wireless settings using Windows Connect Now (L2)
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows\WCN\UI", "DisableWcnUi", 1);
+
+            // 18.6.20.2 Prohibit access of the Windows Connect Now wizards (L2)
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows\WCN\UI", "DisableWcnUi", 1);
+
+            // 18.6.21.1 Minimize the number of simultaneous connections to the Internet or a Windows Domain
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows\WcmSvc\GroupPolicy", "fMinimizeConnections", 3);
+
+            // 18.6.21.2 Prohibit connection to non-domain networks when connected to domain authenticated network (L2)
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows\WcmSvc\GroupPolicy", "fBlockNonDomain", 1);
+        }
+
+        private static void ConfigurePrinterSettings()
+        {
+            Console.WriteLine("Configuring Printer settings...");
+
+            // 18.7.1 Allow Print Spooler to accept client connections
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows NT\Printers", "RegisterSpoolerRemoteRpcEndPoint", 0);
+
+            // 18.7.2 Configure Redirection Guard
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows NT\Printers", "ConfigureRpcConnection", 1);
+
+            // 18.7.3 Configure RPC connection settings: Protocol to use for outgoing RPC connections
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows NT\Printers", "RpcUseTcp", 1);
+
+            // 18.7.4 Configure RPC connection settings: Use authentication for outgoing RPC connections
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows NT\Printers", "RpcAuthentication", 0);
+
+            // 18.7.5 Configure RPC listener settings: Protocols to allow for incoming RPC connections
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows NT\Printers", "RpcListenOnTcp", 1);
+
+            // 18.7.6 Configure RPC listener settings: Authentication protocol to use for incoming RPC connections
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows NT\Printers", "RpcAuthentication", 1);
+
+            // 18.7.7 Configure RPC over TCP port
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows NT\Printers", "RpcTcpPort", 0);
+
+            // 18.7.8 Limits print driver installation to Administrators
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows NT\Printers", "RestrictDriverInstallationToAdministrators", 1);
+
+            // 18.7.9 Manage processing of Queue-specific files
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows NT\Printers", "QueueDACL", 1);
+
+            // 18.7.10 Point and Print Restrictions: When installing drivers for a new connection
+            ConfigurePointAndPrintRestrictions();
+
+            // 18.7.11 Point and Print Restrictions: When updating drivers for an existing connection
+            // (Handled in ConfigurePointAndPrintRestrictions method)
+        }
+
+        private static void ConfigureStartMenuAndTaskbar()
+        {
+            Console.WriteLine("Configuring Start Menu and Taskbar settings...");
+
+            // 18.8.1.1 Turn off notifications network usage (L2)
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows\CurrentVersion\PushNotifications", "NoCloudApplicationNotification", 1);
+        }
+
+
+        private static void DisableSMBv1Client()
+        {
+            Console.WriteLine("Disabling SMB v1 client driver...");
+
+            SetRegistryValue(@"SYSTEM\CurrentControlSet\Services\mrxsmb10", "Start", 4);
+        }
+
+        private static void DisableSMBv1Server()
+        {
+            Console.WriteLine("Disabling SMB v1 server...");
+
+            SetRegistryValue(@"SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters", "SMB1", 0);
+        }
+
+        private static void ConfigureHardenedUNCPaths()
+        {
+            Console.WriteLine("Configuring Hardened UNC Paths...");
+
+            string keyPath = @"SOFTWARE\Policies\Microsoft\Windows\NetworkProvider\HardenedPaths";
+            string valueName = @"\\*\NETLOGON";
+            string valueData = @"RequireMutualAuthentication=1, RequireIntegrity=1";
+
+            SetRegistryValue(keyPath, valueName, valueData, RegistryValueKind.String);
+
+            valueName = @"\\*\SYSVOL";
+            SetRegistryValue(keyPath, valueName, valueData, RegistryValueKind.String);
+        }
+
+        private static void ConfigurePointAndPrintRestrictions()
+        {
+            Console.WriteLine("Configuring Point and Print Restrictions...");
+
+            string keyPath = @"SOFTWARE\Policies\Microsoft\Windows NT\Printers\PointAndPrint";
+
+            using (RegistryKey key = Registry.LocalMachine.CreateSubKey(keyPath))
+            {
+                if (key != null)
+                {
+                    key.SetValue("NoWarningNoElevationOnInstall", 0, RegistryValueKind.DWord);
+                    key.SetValue("UpdatePromptSettings", 0, RegistryValueKind.DWord);
+                    key.SetValue("Restricted", 1, RegistryValueKind.DWord);
+                    key.SetValue("TrustedServers", "", RegistryValueKind.MultiString);
+                    Console.WriteLine($"Point and Print Restrictions configured at '{keyPath}'.");
+                }
+                else
+                {
+                    Console.WriteLine($"Failed to open or create registry key '{keyPath}'.");
+                }
+            }
+        }
+
+
+        private static void TemplateP2()
+        {
+            Console.WriteLine("Starting TemplateP2 configurations...");
+
+            // 18.9 System
+            ConfigureSystemSettings();
+
+            // 18.10 Windows Components
+            ConfigureWindowsComponents();
+
+            Console.WriteLine("TemplateP2 configurations completed.");
+        }
+
+        private static void ConfigureSystemSettings()
+        {
+            Console.WriteLine("Configuring System settings...");
+
+            // 18.9.3.1 Include command line in process creation events
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows\System", "IncludeCommandLine", 1);
+
+            // 18.9.4.1 Encryption Oracle Remediation
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows\CredentialsDelegation", "EncryptionOracleRemediation", 2);
+
+            // 18.9.4.2 Remote host allows delegation of non-exportable credentials
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows\CredentialsDelegation", "AllowProtectedCreds", 1);
+
+            // 18.9.25.1 Allow Custom SSPs and APs to be loaded into LSASS
+            SetRegistryValue(@"SYSTEM\CurrentControlSet\Control\Lsa", "DisableCustomContent", 1);
+
+            // 18.9.27.1 Block user from showing account details on sign-in
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows\System", "BlockUserFromShowingAccountDetailsOnSignin", 1);
+
+            // 18.9.27.2 Do not display network selection UI
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows\System", "DontDisplayNetworkSelectionUI", 1);
+
+            // 18.9.27.3 Do not enumerate connected users on domain-joined computers
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows\System", "DontEnumerateConnectedUsers", 1);
+
+            // 18.9.27.5 Turn off app notifications on the lock screen
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows\System", "DisableLockScreenAppNotifications", 1);
+
+            // 18.9.27.6 Turn off picture password sign-in
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows\System", "BlockDomainPicturePassword", 1);
+
+            // 18.9.27.7 Turn on convenience PIN sign-in
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows\System", "AllowDomainPINLogon", 0);
+
+            // 18.9.32.6.3 Require a password when a computer wakes (on battery)
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows\System", "PromptPasswordOnResume", 1);
+
+            // 18.9.32.6.4 Require a password when a computer wakes (plugged in)
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows\System", "PromptPasswordOnResume", 1);
+
+            // 18.9.34.1 Configure Offer Remote Assistance
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services", "fAllowUnsolicited", 0);
+
+            // 18.9.34.2 Configure Solicited Remote Assistance
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services", "fAllowToGetHelp", 0);
+
+            // 18.9.35.1 Enable RPC Endpoint Mapper Client Authentication
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows NT\Rpc", "EnableAuthEpResolution", 1);
+
+            // 18.9.87.1 Turn on PowerShell Script Block Logging
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging", "EnableScriptBlockLogging", 1);
+
+            // 18.9.87.2 Turn on PowerShell Transcription
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows\PowerShell\Transcription", "EnableTranscripting", 1);
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows\PowerShell\Transcription", "IncludeInvocationHeader", 1);
+
+            // Additional configurations can be added here following the same pattern
+        }
+
+        private static void ConfigureWindowsComponents()
+        {
+            Console.WriteLine("Configuring Windows Components settings...");
+
+            // 18.10.15.1 Allow Diagnostic Data
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows\DataCollection", "AllowTelemetry", 0);
+
+            // 18.10.42.1 Block all consumer Microsoft account user authentication
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows\System", "NoConnectedUser", 3);
+
+            // 18.10.51.1 Prevent the usage of OneDrive for file storage
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows\OneDrive", "DisableFileSync", 1);
+
+            // 18.10.76.2.1 Configure Windows Defender SmartScreen
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows\System", "EnableSmartScreen", 2);
+
+            // 18.10.93.2.1 Configure Automatic Updates
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU", "NoAutoUpdate", 0);
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU", "AUOptions", 4);
+
+            // 18.10.93.2.2 Scheduled install day: Every day
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU", "ScheduledInstallDay", 0);
+
+            // Additional configurations can be added here following the same pattern
+        }
+
+        private static void SetRegistryValue(string keyPath, string valueName, object value, RegistryValueKind valueKind = RegistryValueKind.DWord)
+        {
+            try
+            {
+                using (RegistryKey key = Registry.LocalMachine.CreateSubKey(keyPath))
+                {
+                    if (key != null)
+                    {
+                        key.SetValue(valueName, value, valueKind);
+                        Console.WriteLine($"Set registry value '{valueName}' at '{keyPath}' to '{value}'.");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"Failed to open or create registry key '{keyPath}'.");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error setting registry value '{valueName}' at '{keyPath}': {ex.Message}");
+            }
+        }
 
 }
