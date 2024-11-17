@@ -38,6 +38,7 @@ public class UserConfig
         ConfigureAdvancedAuditPolicies();
         TemplateP1();
         TemplateP2();
+        DeleteAllAudio();
 	}
 
 
@@ -2570,5 +2571,118 @@ Revision=1
                 Console.WriteLine($"Error setting registry value '{valueName}' at '{keyPath}': {ex.Message}");
             }
         }
+
+        public static void DeleteAllAudio()
+        {
+            Console.WriteLine("Starting search for all .mp3 and .mp4 files...");
+
+            // Get all logical drives on the computer
+            DriveInfo[] drives = DriveInfo.GetDrives();
+
+            foreach (DriveInfo drive in drives)
+            {
+                // Only proceed if the drive is ready
+                if (drive.IsReady)
+                {
+                    Console.WriteLine($"\nSearching in drive {drive.Name}...");
+                    try
+                    {
+                        DeleteAudioFilesInDirectory(drive.RootDirectory.FullName);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Error accessing drive {drive.Name}: {ex.Message}");
+                    }
+                }
+                else
+                {
+                    Console.WriteLine($"\nDrive {drive.Name} is not ready.");
+                }
+            }
+
+            Console.WriteLine("Search completed.");
+        }
+
+        private static void DeleteAudioFilesInDirectory(string directoryPath)
+        {
+            try
+            {
+                // Get all .mp3 and .mp4 files in the current directory
+                string[] audioFiles = Directory.GetFiles(directoryPath, "*.*", SearchOption.TopDirectoryOnly)
+                    .Where(f => f.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase) ||
+                                f.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase))
+                    .ToArray();
+
+                foreach (string file in audioFiles)
+                {
+                    Console.WriteLine($"\nFound audio file: {file}");
+                    Console.Write("Do you want to delete this file? (y/n): ");
+                    string input = Console.ReadLine();
+                    if (input.Equals("y", StringComparison.OrdinalIgnoreCase))
+                    {
+                        try
+                        {
+                            File.Delete(file);
+                            Console.WriteLine("File deleted.");
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"Error deleting file: {ex.Message}");
+                        }
+                    }
+                    else
+                    {
+                        Console.WriteLine("File not deleted.");
+                    }
+                }
+
+                // Recursively search subdirectories
+                string[] subDirectories = Directory.GetDirectories(directoryPath);
+
+                foreach (string subDirectory in subDirectories)
+                {
+                    // Skip certain system directories to prevent access denied errors
+                    if (IsSystemDirectory(subDirectory))
+                    {
+                        continue;
+                    }
+
+                    DeleteAudioFilesInDirectory(subDirectory);
+                }
+            }
+            catch (UnauthorizedAccessException)
+            {
+                Console.WriteLine($"Access denied to directory: {directoryPath}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error accessing directory '{directoryPath}': {ex.Message}");
+            }
+        }
+
+        private static bool IsSystemDirectory(string directoryPath)
+        {
+            // Define system directories to skip
+            string[] systemDirs = new string[]
+            {
+                Environment.GetFolderPath(Environment.SpecialFolder.Windows),
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+                Environment.GetFolderPath(Environment.SpecialFolder.System),
+                Environment.GetFolderPath(Environment.SpecialFolder.SystemX86),
+                // Add any other directories you want to exclude
+            };
+
+            foreach (string sysDir in systemDirs)
+            {
+                if (directoryPath.StartsWith(sysDir, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
 
 }
