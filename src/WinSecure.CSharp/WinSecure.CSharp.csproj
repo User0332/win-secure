@@ -4,7 +4,7 @@
     <OutputType>Library</OutputType>
     <TargetFramework>net47</TargetFramework>
     <TargetPlatform>AnyCPU</TargetPlatform>
-    <LangVersion>12</LangVersion>
+    <LangVersion>latest</LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
