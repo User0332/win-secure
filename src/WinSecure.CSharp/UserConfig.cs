@@ -3,11 +3,6 @@ using System.Net;
 using Microsoft.Win32;
 using System.DirectoryServices.AccountManagement;
 
-
-
-#pragma warning disable CA1416 // Validate platform compatibility
-
-
 namespace WinSecure.CSharp;
 public class UserConfig
 {
@@ -21,7 +16,7 @@ public class UserConfig
 		HardenChrome();
 		ManageApplications();
 		ConfigureUserRightsAssignments();
-		ConfigureSecurityOptions();
+		// ConfigureSecurityOptions();
 		ConfigureUserAccounts();
 		ApplySecurityPolicies();
 
@@ -960,7 +955,7 @@ Revision=1
 			File.WriteAllText(tempInfPath, infContent);
 
 			// Apply the security template using secedit.exe
-			Process process = new Process();
+			Process process = new();
 			process.StartInfo.FileName = "secedit.exe";
 			process.StartInfo.Arguments = $"/configure /db secedit.sdb /cfg \"{tempInfPath}\" /overwrite /quiet";
 			process.StartInfo.UseShellExecute = false;
@@ -1022,8 +1017,8 @@ Revision=1
 	{
 		Console.WriteLine("Configuring user accounts...");
 
-		List<string> adminUsers = new List<string>();
-		List<string> standardUsers = new List<string>();
+		List<string> adminUsers = [];
+		List<string> standardUsers = [];
 
 		// Prompt for admin users
 		Console.WriteLine("Enter the names of admin users (press Enter without typing a name to finish):");
