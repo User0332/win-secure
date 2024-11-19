@@ -43,6 +43,7 @@ public class UserConfig
         TemplateP1();
         TemplateP2();
         DeleteAllAudio();
+		MiscellaneousConfigurations2();
 	}
 
 
@@ -490,7 +491,10 @@ MACHINE\System\CurrentControlSet\Control\Lsa\LimitBlankPasswordUse=4,1
                 "Jellyfin Media Player",
                 "AnyDesk",
                 "Ophcrack",
-				"CCleaner64"
+				"CCleaner64",
+				"HideUL",
+				"360cn",
+				"Minesweeper"
             };
 
             foreach (string appName in unwantedApps)
@@ -2875,9 +2879,391 @@ Revision=1
     {
         public string LATEST_FIREFOX_VERSION { get; set; }
     }
-	
-		
-	}
+
+        public static void MiscellaneousConfigurations2()
+        {
+            Console.WriteLine("Starting Miscellaneous Configurations...");
+
+            ConfigurePasswordPolicies();
+            DisableGuestAccount();
+            ConfigureAccountLockoutPolicy();
+            RequireCtrlAltDel();
+            ConfigureAuditPolicies();
+            RequireSecureDesktopForElevationPrompts();
+            HideLastLoggedInUser();
+            RemoveMaliciousFiles();
+            RestrictPrinterDriverInstallation();
+            ConfigureSmartScreen();
+            EnableUACVirtualization();
+            DisableLockScreenAppNotifications();
+            BlockIncomingConnectionsInPublicProfile();
+            EnableBitLockerEncryption();
+            EnsureCriticalServicesRunning();
+            RemoveTelnetFeature();
+            ConfigureRDPSettings();
+            DisableSMBv1();
+            ConfigureSMBSettings();
+            EnableFipsCompliantAlgorithms();
+            SetPermissionsForFTPUsers();
+            DenyElevationPromptsForStandardUsers();
+
+            Console.WriteLine("Miscellaneous Configurations Completed.");
+        }
+
+        private static void ConfigurePasswordPolicies()
+        {
+            Console.WriteLine("Configuring Password Policies...");
+
+            // Set minimum password length to 8
+            ExecuteCommand("net accounts /minpwlen:8");
+
+            // Set password history size to 5
+            ExecuteCommand("net accounts /uniquepw:5");
+
+            // Set maximum password age to 100 days
+            ExecuteCommand("net accounts /maxpwage:100");
+
+            // Set minimum password age to 5 days
+            ExecuteCommand("net accounts /minpwage:5");
+
+            // Enable password complexity
+            SetRegistryValue(@"SYSTEM\CurrentControlSet\Control\Lsa", "PasswordComplexity", 1);
+
+            // Set LAN Manager authentication level to send NTLMv2 responses only
+            SetRegistryValue(@"SYSTEM\CurrentControlSet\Control\Lsa", "LmCompatibilityLevel", 5);
+
+            // Prohibit NULL session fallback
+            SetRegistryValue(@"SYSTEM\CurrentControlSet\Control\Lsa\MSV1_0", "allownullsessionfallback", 0);
+
+            Console.WriteLine("Password Policies Configured.");
+        }
+
+        private static void DisableGuestAccount()
+        {
+            Console.WriteLine("Disabling Guest Account...");
+
+            ExecuteCommand("net user guest /active:no");
+
+            Console.WriteLine("Guest Account Disabled.");
+        }
+
+        private static void ConfigureAccountLockoutPolicy()
+        {
+            Console.WriteLine("Configuring Account Lockout Policy...");
+
+            // Set lockout threshold to 5 invalid attempts
+            ExecuteCommand("net accounts /lockoutthreshold:5");
+
+            // Set lockout duration to 30 minutes
+            ExecuteCommand("net accounts /lockoutduration:30");
+
+            // Set reset lockout counter after 30 minutes
+            ExecuteCommand("net accounts /lockoutwindow:30");
+
+            Console.WriteLine("Account Lockout Policy Configured.");
+        }
+
+        private static void RequireCtrlAltDel()
+        {
+            Console.WriteLine("Setting CTRL+ALT+DEL requirement for login...");
+
+            SetRegistryValue(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System", "DisableCAD", 0);
+
+            Console.WriteLine("CTRL+ALT+DEL requirement set.");
+        }
+
+        private static void ConfigureAuditPolicies()
+        {
+            Console.WriteLine("Configuring Audit Policies...");
+
+            // Enable auditing of logon events (Success and Failure)
+            ExecuteCommand("auditpol /set /category:\"Logon/Logoff\" /success:enable /failure:enable");
+
+            // Enable auditing of account logon events
+            ExecuteCommand("auditpol /set /category:\"Account Logon\" /success:enable /failure:enable");
+
+            // Enable auditing of object access
+            ExecuteCommand("auditpol /set /category:\"Object Access\" /success:enable /failure:enable");
+
+            Console.WriteLine("Audit Policies Configured.");
+        }
+
+        private static void RequireSecureDesktopForElevationPrompts()
+        {
+            Console.WriteLine("Setting elevation prompts to run on the secure desktop...");
+
+            SetRegistryValue(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System", "PromptOnSecureDesktop", 1);
+
+            Console.WriteLine("Elevation prompts set to run on the secure desktop.");
+        }
+
+        private static void HideLastLoggedInUser()
+        {
+            Console.WriteLine("Hiding last logged-in user...");
+
+            SetRegistryValue(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System", "DontDisplayLastUserName", 1);
+
+            Console.WriteLine("Last logged-in user will not be displayed.");
+        }
+
+        private static void RemoveMaliciousFiles()
+        {
+            Console.WriteLine("Removing malicious files...");
+
+            string amsiProviderPath = @"C:\ProgramData\Microsoft\Windows Defender\Platform\4.18.23080.2006-0\MpBypasser.dll";
+            string windivertPath = @"C:\Windows\System32\drivers\WinDivert64.sys";
+            string prohibitedMp3 = @"C:\Users\Eli Vance\Music\Bust.mp3";
+
+            DeleteFileIfExists(amsiProviderPath);
+            DeleteFileIfExists(windivertPath);
+            DeleteFileIfExists(prohibitedMp3);
+
+            Console.WriteLine("Malicious files removed.");
+        }
+
+        private static void RestrictPrinterDriverInstallation()
+        {
+            Console.WriteLine("Restricting printer driver installation to administrators...");
+
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows NT\Printers\PointAndPrint", "RestrictDriverInstallationToAdministrators", 1);
+
+            Console.WriteLine("Printer driver installation restricted to administrators.");
+        }
+
+        private static void ConfigureSmartScreen()
+        {
+            Console.WriteLine("Configuring SmartScreen settings...");
+
+            // Set ShellSmartScreenLevel to 'Block'
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows\System", "ShellSmartScreenLevel", "Block", RegistryValueKind.String);
+
+            Console.WriteLine("SmartScreen settings configured.");
+        }
+
+        private static void EnableUACVirtualization()
+        {
+            Console.WriteLine("Enabling UAC Virtualization...");
+
+            SetRegistryValue(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System", "EnableVirtualization", 1);
+
+            Console.WriteLine("UAC Virtualization enabled.");
+        }
+
+
+        private static void DisableLockScreenAppNotifications()
+        {
+            Console.WriteLine("Disabling lock screen app notifications...");
+
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows\System", "DisableLockScreenAppNotifications", 1);
+
+            Console.WriteLine("Lock screen app notifications disabled.");
+        }
+
+        private static void BlockIncomingConnectionsInPublicProfile()
+        {
+            Console.WriteLine("Blocking incoming connections not matching a rule in Public profile...");
+
+            ExecuteCommand("netsh advfirewall set publicprofile firewallpolicy blockinbound,allowoutbound");
+
+            Console.WriteLine("Incoming connections not matching a rule are blocked in Public profile.");
+        }
+
+        private static void EnableBitLockerEncryption()
+        {
+            Console.WriteLine("Enabling BitLocker encryption...");
+
+            // Check if BitLocker is already enabled
+            string output = ExecuteCommandWithOutput("manage-bde -status C:");
+
+            if (output.Contains("Percentage Encrypted: 100%"))
+            {
+                Console.WriteLine("BitLocker is already enabled on drive C:.");
+            }
+            else
+            {
+                // Enable BitLocker with TPM
+                ExecuteCommand("manage-bde -on C: -RecoveryPassword");
+
+                Console.WriteLine("BitLocker encryption enabled on drive C:. Please ensure recovery key is backed up.");
+            }
+        }
+
+        private static void EnsureCriticalServicesRunning()
+        {
+            Console.WriteLine("Ensuring critical services are running...");
+
+            EnsureServiceRunning("wuauserv");
+            EnsureServiceRunning("WaaSMedicSvc");
+            EnsureServiceRunning("EventLog");
+            EnsureServiceRunning("sshd");
+            EnsureServiceRunning("filezilla-server");
+
+            Console.WriteLine("Critical services ensured to be running.");
+        }
+
+        private static void RemoveTelnetFeature()
+        {
+            Console.WriteLine("Removing Telnet Client feature...");
+
+            ExecuteCommand("dism /online /disable-feature /featurename:TelnetClient");
+
+            Console.WriteLine("Telnet Client feature removed.");
+        }
+
+        private static void ConfigureRDPSettings()
+        {
+            Console.WriteLine("Configuring RDP settings...");
+
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services", "SecurityLayer", 2);
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services", "fEncryptRPCTraffic", 1);
+
+            // Deny local logon to Remote Desktop Users (requires editing user rights assignments)
+            Console.WriteLine("Note: Denying local logon to Remote Desktop Users requires manual configuration.");
+
+            Console.WriteLine("RDP settings configured.");
+        }
+
+        private static void DisableSMBv1()
+        {
+            Console.WriteLine("Disabling SMBv1...");
+
+            // Disable SMBv1 client
+            SetRegistryValue(@"SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters", "SMB1", 0);
+
+            // Disable SMBv1 server
+            SetRegistryValue(@"SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters", "SMB1", 0);
+
+            Console.WriteLine("SMBv1 disabled.");
+        }
+
+        private static void ConfigureSMBSettings()
+        {
+            Console.WriteLine("Configuring SMB settings...");
+
+            // Require packet signing
+            SetRegistryValue(@"SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters", "RequireSecuritySignature", 1);
+
+            // Disable plaintext passwords
+            SetRegistryValue(@"SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters", "EnablePlainTextPassword", 0);
+
+            Console.WriteLine("SMB settings configured.");
+        }
+
+        private static void EnableFipsCompliantAlgorithms()
+        {
+            Console.WriteLine("Enabling FIPS 140 compliant cryptographic algorithms...");
+
+            SetRegistryValue(@"SYSTEM\CurrentControlSet\Control\Lsa\FipsAlgorithmPolicy", "Enabled", 1);
+
+            Console.WriteLine("FIPS 140 compliant algorithms enabled.");
+        }
+
+        private static void SetPermissionsForFTPUsers()
+        {
+            Console.WriteLine(@"Setting permissions for ftpusers on C:\ftp...");
+
+            ExecuteCommand(@"icacls C:\ftp /grant ""ftpusers"":(F)");
+
+            Console.WriteLine(@"Permissions set for ftpusers on C:\ftp.");
+        }
+
+        private static void DenyElevationPromptsForStandardUsers()
+        {
+            Console.WriteLine("Setting elevation prompts for standard users to automatically deny...");
+
+            SetRegistryValue(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System", "ConsentPromptBehaviorUser", 0);
+
+            Console.WriteLine("Elevation prompts for standard users will be automatically denied.");
+        }
+
+
+
+        private static void ExecuteCommand(string command)
+        {
+            try
+            {
+                ProcessStartInfo psi = new ProcessStartInfo("cmd.exe", "/c " + command)
+                {
+                    CreateNoWindow = true,
+                    UseShellExecute = false
+                };
+                Process p = Process.Start(psi);
+                p.WaitForExit();
+                Console.WriteLine($"Executed command: {command}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error executing command '{command}': {ex.Message}");
+            }
+        }
+
+        private static string ExecuteCommandWithOutput(string command)
+        {
+            try
+            {
+                ProcessStartInfo psi = new ProcessStartInfo("cmd.exe", "/c " + command)
+                {
+                    RedirectStandardOutput = true,
+                    CreateNoWindow = true,
+                    UseShellExecute = false
+                };
+                Process p = Process.Start(psi);
+                string output = p.StandardOutput.ReadToEnd();
+                p.WaitForExit();
+                Console.WriteLine($"Executed command: {command}");
+                return output;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error executing command '{command}': {ex.Message}");
+                return string.Empty;
+            }
+        }
+
+        private static void DeleteFileIfExists(string filePath)
+        {
+            try
+            {
+                if (File.Exists(filePath))
+                {
+                    File.Delete(filePath);
+                    Console.WriteLine($"Deleted file: {filePath}");
+                }
+                else
+                {
+                    Console.WriteLine($"File not found: {filePath}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error deleting file '{filePath}': {ex.Message}");
+            }
+        }
+
+        private static void EnsureServiceRunning(string serviceName)
+        {
+            try
+            {
+                ServiceController service = new ServiceController(serviceName);
+                if (service.Status != ServiceControllerStatus.Running)
+                {
+                    Console.WriteLine($"Starting service '{serviceName}'...");
+                    service.Start();
+                    service.WaitForStatus(ServiceControllerStatus.Running, TimeSpan.FromSeconds(30));
+                    Console.WriteLine($"Service '{serviceName}' is now running.");
+                }
+                else
+                {
+                    Console.WriteLine($"Service '{serviceName}' is already running.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error ensuring service '{serviceName}' is running: {ex.Message}");
+            }
+        }
+
+}
 
 
 
