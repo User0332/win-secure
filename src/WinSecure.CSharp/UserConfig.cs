@@ -28,7 +28,7 @@ public class UserConfig
 		UpdateWindows();
 		UpdateChrome();
 		HardenChrome();
-		FixUpFirefox();
+		//FixUpFirefox();
 		ManageApplications();
 		ConfigureUserRightsAssignments();
 		ConfigureSecurityOptions();
