@@ -7,6 +7,9 @@ using System.IO;
 using System.Collections.Generic;
 using System;
 using System.ServiceProcess;
+using System.Linq;
+using Newtonsoft.Json;
+
 
 
 
@@ -25,6 +28,7 @@ public class UserConfig
 		UpdateWindows();
 		UpdateChrome();
 		HardenChrome();
+		FixUpFirefox();
 		ManageApplications();
 		ConfigureUserRightsAssignments();
 		ConfigureSecurityOptions();
@@ -485,7 +489,8 @@ MACHINE\System\CurrentControlSet\Control\Lsa\LimitBlankPasswordUse=4,1
                 "Burp Suite Community Edition",
                 "Jellyfin Media Player",
                 "AnyDesk",
-                "Ophcrack"
+                "Ophcrack",
+				"CCleaner64"
             };
 
             foreach (string appName in unwantedApps)
@@ -2686,5 +2691,193 @@ Revision=1
             return false;
         }
 
+        public static void FixUpFirefox()
+        {
+            Console.WriteLine("Starting Firefox configuration...");
 
-}
+            // Step 1: Check if Firefox is installed and up-to-date
+            bool isFirefoxUpToDate = CheckAndUpdateFirefox();
+
+            // Step 2: Harden Firefox settings
+            HardenFirefoxSettings();
+
+            Console.WriteLine("Firefox configuration completed.");
+        }
+
+        private static bool CheckAndUpdateFirefox()
+        {
+            Console.WriteLine("Checking if Firefox is installed and up-to-date...");
+
+            string firefoxRegistryPath = @"SOFTWARE\Mozilla\Mozilla Firefox";
+            string? installedVersion = null;
+
+            using (RegistryKey key = Registry.LocalMachine.OpenSubKey(firefoxRegistryPath))
+            {
+                if (key != null)
+                {
+                    string? currentVersion = key.GetValue("CurrentVersion") as string;
+                    installedVersion = currentVersion ?? "Unknown";
+                    Console.WriteLine($"Firefox is installed. Current version: {installedVersion}");
+                }
+            }
+
+            string? latestVersion = GetLatestFirefoxVersion();
+            if (string.IsNullOrEmpty(latestVersion))
+            {
+                Console.WriteLine("Could not retrieve the latest Firefox version.");
+                return false;
+            }
+            Console.WriteLine($"Latest Firefox version available: {latestVersion}");
+
+            if (installedVersion == null || installedVersion != latestVersion)
+            {
+                Console.WriteLine("Firefox is not installed or not up-to-date. Proceeding to download and install the latest version...");
+                return DownloadAndInstallFirefox(latestVersion);
+            }
+            else
+            {
+                Console.WriteLine("Firefox is up-to-date.");
+                return true;
+            }
+        }
+
+        private static string? GetLatestFirefoxVersion()
+        {
+            try
+            {
+                string url = "https://product-details.mozilla.org/1.0/firefox_versions.json";
+                using (WebClient client = new WebClient())
+                {
+                    string json = client.DownloadString(url);
+                    var data = JsonConvert.DeserializeObject<FirefoxVersionInfo>(json);
+
+                    if (data != null)
+                    {
+                        return data.LATEST_FIREFOX_VERSION;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error retrieving latest Firefox version: {ex.Message}");
+            }
+
+            return null;
+        }
+
+        private static bool DownloadAndInstallFirefox(string version)
+        {
+            try
+            {
+                string downloadUrl = $"https://download.mozilla.org/?product=firefox-{version}-ssl&os=win64&lang=en-US";
+                string installerPath = Path.Combine(Path.GetTempPath(), "FirefoxInstaller.exe");
+
+                Console.WriteLine($"Downloading Firefox version {version} from {downloadUrl}...");
+
+                using (WebClient client = new WebClient())
+                {
+                    client.DownloadFile(downloadUrl, installerPath);
+                }
+
+                Console.WriteLine("Download completed. Starting installation...");
+
+                Process installerProcess = new Process();
+                installerProcess.StartInfo.FileName = installerPath;
+                installerProcess.StartInfo.Arguments = "/silent /install";
+                installerProcess.StartInfo.UseShellExecute = false;
+                installerProcess.StartInfo.CreateNoWindow = true;
+                installerProcess.Start();
+                installerProcess.WaitForExit();
+
+                Console.WriteLine("Firefox installation completed.");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error downloading or installing Firefox: {ex.Message}");
+                return false;
+            }
+        }
+
+        private static void HardenFirefoxSettings()
+        {
+            Console.WriteLine("Hardening Firefox settings...");
+
+            string usersDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            string[] userDirectories = Directory.GetDirectories(Path.GetDirectoryName(usersDirectory));
+
+            foreach (string userDir in userDirectories)
+            {
+                string firefoxProfilePath = Path.Combine(userDir, @"AppData\Roaming\Mozilla\Firefox\Profiles");
+                if (Directory.Exists(firefoxProfilePath))
+                {
+                    string[] profileDirs = Directory.GetDirectories(firefoxProfilePath);
+                    foreach (string profileDir in profileDirs)
+                    {
+                        string prefsFilePath = Path.Combine(profileDir, "prefs.js");
+
+                        if (File.Exists(prefsFilePath))
+                        {
+                            Console.WriteLine($"Modifying preferences in {prefsFilePath}...");
+
+                            try
+                            {
+                                string[] lines = File.ReadAllLines(prefsFilePath);
+
+                                lines = UpdatePreference(lines, "dom.disable_open_during_load", true);
+                                lines = UpdatePreference(lines, "browser.safebrowsing.phishing.enabled", true);
+                                lines = UpdatePreference(lines, "identity.fxaccounts.enabled", false);
+
+                                File.WriteAllLines(prefsFilePath, lines);
+
+                                Console.WriteLine("Preferences updated successfully.");
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"Error modifying preferences in {prefsFilePath}: {ex.Message}");
+                            }
+                        }
+                        else
+                        {
+                            Console.WriteLine($"Preferences file not found in {profileDir}.");
+                        }
+                    }
+                }
+            }
+        }
+
+        private static string[] UpdatePreference(string[] lines, string preference, bool value)
+        {
+            string prefLine = $"user_pref(\"{preference}\", {value.ToString().ToLower()});";
+            bool prefFound = false;
+
+            for (int i = 0; i < lines.Length; i++)
+            {
+                if (lines[i].Contains($"user_pref(\"{preference}\","))
+                {
+                    lines[i] = prefLine;
+                    prefFound = true;
+                    break;
+                }
+            }
+
+            if (!prefFound)
+            {
+                List<string> linesList = new List<string>(lines);
+                linesList.Add(prefLine);
+                lines = linesList.ToArray();
+            }
+
+            return lines;
+        }
+    
+    public class FirefoxVersionInfo
+    {
+        public string LATEST_FIREFOX_VERSION { get; set; }
+    }
+	
+		
+	}
+
+
+
