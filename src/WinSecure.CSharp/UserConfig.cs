@@ -38,7 +38,7 @@ public class UserConfig
         ConfigureAdvancedAuditPolicies();
         TemplateP1();
         TemplateP2();
-        //DeleteAllAudio();
+        DeleteAllAudio();
 	}
 
 
