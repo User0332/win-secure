@@ -9,6 +9,11 @@ using System;
 using System.ServiceProcess;
 using System.Linq;
 using Newtonsoft.Json;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+using System.Management;
+
+
 
 
 
@@ -28,7 +33,6 @@ public class UserConfig
 		UpdateWindows();
 		UpdateChrome();
 		HardenChrome();
-		//FixUpFirefox();
 		ManageApplications();
 		ConfigureUserRightsAssignments();
 		ConfigureSecurityOptions();
@@ -44,6 +48,8 @@ public class UserConfig
         TemplateP2();
         DeleteAllAudio();
 		MiscellaneousConfigurations2();
+        theCincinatiZoo();
+        amongTheReindeer();
 	}
 
 
@@ -2695,190 +2701,7 @@ Revision=1
             return false;
         }
 
-        public static void FixUpFirefox()
-        {
-            Console.WriteLine("Starting Firefox configuration...");
 
-            // Step 1: Check if Firefox is installed and up-to-date
-            bool isFirefoxUpToDate = CheckAndUpdateFirefox();
-
-            // Step 2: Harden Firefox settings
-            HardenFirefoxSettings();
-
-            Console.WriteLine("Firefox configuration completed.");
-        }
-
-        private static bool CheckAndUpdateFirefox()
-        {
-            Console.WriteLine("Checking if Firefox is installed and up-to-date...");
-
-            string firefoxRegistryPath = @"SOFTWARE\Mozilla\Mozilla Firefox";
-            string? installedVersion = null;
-
-            using (RegistryKey key = Registry.LocalMachine.OpenSubKey(firefoxRegistryPath))
-            {
-                if (key != null)
-                {
-                    string? currentVersion = key.GetValue("CurrentVersion") as string;
-                    installedVersion = currentVersion ?? "Unknown";
-                    Console.WriteLine($"Firefox is installed. Current version: {installedVersion}");
-                }
-            }
-
-            string? latestVersion = GetLatestFirefoxVersion();
-            if (string.IsNullOrEmpty(latestVersion))
-            {
-                Console.WriteLine("Could not retrieve the latest Firefox version.");
-                return false;
-            }
-            Console.WriteLine($"Latest Firefox version available: {latestVersion}");
-
-            if (installedVersion == null || installedVersion != latestVersion)
-            {
-                Console.WriteLine("Firefox is not installed or not up-to-date. Proceeding to download and install the latest version...");
-                return DownloadAndInstallFirefox(latestVersion);
-            }
-            else
-            {
-                Console.WriteLine("Firefox is up-to-date.");
-                return true;
-            }
-        }
-
-        private static string? GetLatestFirefoxVersion()
-        {
-            try
-            {
-                string url = "https://product-details.mozilla.org/1.0/firefox_versions.json";
-                using (WebClient client = new WebClient())
-                {
-                    string json = client.DownloadString(url);
-                    var data = JsonConvert.DeserializeObject<FirefoxVersionInfo>(json);
-
-                    if (data != null)
-                    {
-                        return data.LATEST_FIREFOX_VERSION;
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error retrieving latest Firefox version: {ex.Message}");
-            }
-
-            return null;
-        }
-
-        private static bool DownloadAndInstallFirefox(string version)
-        {
-            try
-            {
-                string downloadUrl = $"https://download.mozilla.org/?product=firefox-{version}-ssl&os=win64&lang=en-US";
-                string installerPath = Path.Combine(Path.GetTempPath(), "FirefoxInstaller.exe");
-
-                Console.WriteLine($"Downloading Firefox version {version} from {downloadUrl}...");
-
-                using (WebClient client = new WebClient())
-                {
-                    client.DownloadFile(downloadUrl, installerPath);
-                }
-
-                Console.WriteLine("Download completed. Starting installation...");
-
-                Process installerProcess = new Process();
-                installerProcess.StartInfo.FileName = installerPath;
-                installerProcess.StartInfo.Arguments = "/silent /install";
-                installerProcess.StartInfo.UseShellExecute = false;
-                installerProcess.StartInfo.CreateNoWindow = true;
-                installerProcess.Start();
-                installerProcess.WaitForExit();
-
-                Console.WriteLine("Firefox installation completed.");
-                return true;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error downloading or installing Firefox: {ex.Message}");
-                return false;
-            }
-        }
-
-        private static void HardenFirefoxSettings()
-        {
-            Console.WriteLine("Hardening Firefox settings...");
-
-            string usersDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            string[] userDirectories = Directory.GetDirectories(Path.GetDirectoryName(usersDirectory));
-
-            foreach (string userDir in userDirectories)
-            {
-                string firefoxProfilePath = Path.Combine(userDir, @"AppData\Roaming\Mozilla\Firefox\Profiles");
-                if (Directory.Exists(firefoxProfilePath))
-                {
-                    string[] profileDirs = Directory.GetDirectories(firefoxProfilePath);
-                    foreach (string profileDir in profileDirs)
-                    {
-                        string prefsFilePath = Path.Combine(profileDir, "prefs.js");
-
-                        if (File.Exists(prefsFilePath))
-                        {
-                            Console.WriteLine($"Modifying preferences in {prefsFilePath}...");
-
-                            try
-                            {
-                                string[] lines = File.ReadAllLines(prefsFilePath);
-
-                                lines = UpdatePreference(lines, "dom.disable_open_during_load", true);
-                                lines = UpdatePreference(lines, "browser.safebrowsing.phishing.enabled", true);
-                                lines = UpdatePreference(lines, "identity.fxaccounts.enabled", false);
-
-                                File.WriteAllLines(prefsFilePath, lines);
-
-                                Console.WriteLine("Preferences updated successfully.");
-                            }
-                            catch (Exception ex)
-                            {
-                                Console.WriteLine($"Error modifying preferences in {prefsFilePath}: {ex.Message}");
-                            }
-                        }
-                        else
-                        {
-                            Console.WriteLine($"Preferences file not found in {profileDir}.");
-                        }
-                    }
-                }
-            }
-        }
-
-        private static string[] UpdatePreference(string[] lines, string preference, bool value)
-        {
-            string prefLine = $"user_pref(\"{preference}\", {value.ToString().ToLower()});";
-            bool prefFound = false;
-
-            for (int i = 0; i < lines.Length; i++)
-            {
-                if (lines[i].Contains($"user_pref(\"{preference}\","))
-                {
-                    lines[i] = prefLine;
-                    prefFound = true;
-                    break;
-                }
-            }
-
-            if (!prefFound)
-            {
-                List<string> linesList = new List<string>(lines);
-                linesList.Add(prefLine);
-                lines = linesList.ToArray();
-            }
-
-            return lines;
-        }
-    
-    public class FirefoxVersionInfo
-    {
-        public string LATEST_FIREFOX_VERSION { get; set; }
-    }
 
         public static void MiscellaneousConfigurations2()
         {
@@ -3178,24 +3001,7 @@ Revision=1
 
 
 
-        private static void ExecuteCommand(string command)
-        {
-            try
-            {
-                ProcessStartInfo psi = new ProcessStartInfo("cmd.exe", "/c " + command)
-                {
-                    CreateNoWindow = true,
-                    UseShellExecute = false
-                };
-                Process p = Process.Start(psi);
-                p.WaitForExit();
-                Console.WriteLine($"Executed command: {command}");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error executing command '{command}': {ex.Message}");
-            }
-        }
+
 
         private static string ExecuteCommandWithOutput(string command)
         {
@@ -3262,6 +3068,331 @@ Revision=1
                 Console.WriteLine($"Error ensuring service '{serviceName}' is running: {ex.Message}");
             }
         }
+
+    public static void theCincinatiZoo()
+    {
+        try
+        {
+            // Enable Privilege Use Audit
+            SetSecurityPolicy("AuditPrivilegeUse", "3");
+
+            // Disable: Turn off real-time protection
+            SetRegistryValue(@"HKLM\SOFTWARE\Policies\Microsoft\Windows Defender\Real-Time Protection", "DisableRealtimeMonitoring", 1, RegistryValueKind.DWord);
+
+            // Enable DEP system-wide
+            SetRegistryValue(@"HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management", "DisableNX", 0, RegistryValueKind.DWord);
+
+            // Replace a process-level token user right removed from everyone
+            RemoveUserRight("SeAssignPrimaryTokenPrivilege", "Everyone");
+
+            // Don't display last logged-in user
+            SetRegistryValue(@"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System", "DontDisplayLastUserName", 1, RegistryValueKind.DWord);
+
+            // Let everyone permissions apply to anonymous users: Disabled
+            SetRegistryValue(@"HKLM\SYSTEM\CurrentControlSet\Control\Lsa", "EveryoneIncludesAnonymous", 0, RegistryValueKind.DWord);
+
+            // Only elevate executables that are signed
+            SetRegistryValue(@"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System", "ValidateAdminCodeSignatures", 1, RegistryValueKind.DWord);
+
+            // Windows Update Service: Enabled and set to Automatic
+            ConfigureService("wuauserv", ServiceStartMode.Automatic);
+
+            // Windows Event Log: Enabled and set to Automatic
+            ConfigureService("EventLog", ServiceStartMode.Automatic);
+
+            // Server Service: Enabled and set to Automatic
+            ConfigureService("LanmanServer", ServiceStartMode.Automatic);
+
+            // DHCP Service: Enabled and set to Automatic
+            ConfigureService("Dhcp", ServiceStartMode.Automatic);
+
+            // Enable insecure guest logons: Disabled
+            SetRegistryValue(@"HKLM\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters", "AllowInsecureGuestAuth", 0, RegistryValueKind.DWord);
+
+            Console.WriteLine("theCincinatiZoo method completed successfully.");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error in theCincinatiZoo: {ex.Message}");
+        }
+    }
+
+    private static void SetSecurityPolicy(string policyKey, string value)
+    {
+        // Implement setting security policies via "secedit" or other methods
+        Console.WriteLine($"Security policy {policyKey} set to {value} (requires specific implementation).");
+    }
+
+    private static void ConfigureService(string serviceName, ServiceStartMode startMode)
+    {
+        using (ServiceController service = new ServiceController(serviceName))
+        {
+            if (service.Status != ServiceControllerStatus.Running)
+            {
+                service.Start();
+                service.WaitForStatus(ServiceControllerStatus.Running, TimeSpan.FromSeconds(30));
+            }
+
+            using (RegistryKey key = Registry.LocalMachine.OpenSubKey($@"SYSTEM\CurrentControlSet\Services\{serviceName}", writable: true))
+            {
+                if (key != null)
+                {
+                    key.SetValue("Start", (int)startMode, RegistryValueKind.DWord);
+                }
+                else
+                {
+                    throw new Exception($"Service registry key not found: {serviceName}");
+                }
+            }
+        }
+    }
+
+        public static void amongTheReindeer()
+        {
+            Console.WriteLine("Starting amongTheReindeer configurations...");
+
+            // Task 1: Look for keyloggers running
+            ScanForKeyloggers();
+
+            // Task 2: Revoke "Trusted Computing Base" right from Everyone
+            RemoveUserRight("SeTcbPrivilege", "Everyone");
+
+            // Task 3: Ensure Event Logs service is running
+            EnsureServiceRunning("EventLog");
+
+            // Task 4: Enable Windows Defender Real-Time Protection
+            EnableWindowsDefenderRealTimeProtection();
+
+            // Task 5: Enable Windows Defender Heuristics
+            EnableWindowsDefenderHeuristics();
+
+            // Task 6: Disable "Let Everyone permissions apply to anonymous users"
+            SetRegistryValue(@"SYSTEM\CurrentControlSet\Control\Lsa", "EveryoneIncludesAnonymous", 0);
+
+            // Task 7: Identify hidden users and ask if they want to be removed
+            IdentifyAndRemoveHiddenUsers();
+
+            // Task 8: Print recycle bin contents and ask to empty
+            HandleRecycleBin();
+
+            // Task 9: Revoke "Assign primary tokens" right from Everyone
+            RemoveUserRight("SeAssignPrimaryTokenPrivilege", "Everyone");
+
+            Console.WriteLine("amongTheReindeer configurations completed.");
+        }
+
+        private static void ScanForKeyloggers()
+        {
+            Console.WriteLine("Scanning for keyloggers...");
+
+            var processes = Process.GetProcesses();
+            var keyloggerProcesses = processes.Where(p => p.ProcessName.IndexOf("keylogger", StringComparison.OrdinalIgnoreCase) >= 0);
+
+            if (!keyloggerProcesses.Any())
+            {
+                Console.WriteLine("No keyloggers found.");
+            }
+            else
+            {
+                foreach (var proc in keyloggerProcesses)
+                {
+                    Console.WriteLine($"Keylogger process found: {proc.ProcessName} (PID: {proc.Id})");
+                    Console.Write("Do you want to terminate this process? (y/n): ");
+                    var input = Console.ReadLine();
+                    if (input.Equals("y", StringComparison.OrdinalIgnoreCase))
+                    {
+                        try
+                        {
+                            proc.Kill();
+                            Console.WriteLine("Process terminated.");
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"Failed to terminate process: {ex.Message}");
+                        }
+                    }
+                    else
+                    {
+                        Console.WriteLine("Process not terminated.");
+                    }
+                }
+            }
+        }
+
+        private static void RemoveUserRight(string userRight, string group)
+        {
+            Console.WriteLine($"Attempting to remove user right '{userRight}' from group '{group}'...");
+            // Implement removal of user rights via external tools or APIs
+
+            // Modifying user rights assignments programmatically requires advanced APIs or external tools like secedit.exe or NTRights.exe.
+            // For the purposes of this script, we will inform the user and suggest manual intervention.
+            Console.WriteLine($"Please remove the '{userRight}' user right from the '{group}' group manually using Local Security Policy (secpol.msc).");
+        }
+
+
+        private static void EnableWindowsDefenderRealTimeProtection()
+        {
+            Console.WriteLine("Enabling Windows Defender Real-Time Protection...");
+
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows Defender", "DisableAntiSpyware", 0);
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows Defender\Real-Time Protection", "DisableRealtimeMonitoring", 0);
+
+            Console.WriteLine("Windows Defender Real-Time Protection enabled!");
+        }
+
+        private static void EnableWindowsDefenderHeuristics()
+        {
+            Console.WriteLine("Enabling Windows Defender Heuristics...");
+
+            // Enable behavior monitoring
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows Defender\Real-Time Protection", "DisableBehaviorMonitoring", 0);
+
+            // Enable cloud-based protection
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows Defender\Spynet", "SpynetReporting", 2);
+            SetRegistryValue(@"SOFTWARE\Policies\Microsoft\Windows Defender\Spynet", "SubmitSamplesConsent", 2);
+
+            Console.WriteLine("Windows Defender Heuristics enabled!");
+        }
+
+        private static void IdentifyAndRemoveHiddenUsers()
+        {
+            Console.WriteLine("Identifying hidden users...");
+
+            try
+            {
+                var users = new List<string>();
+                var searcher = new ManagementObjectSearcher("Select * from Win32_UserAccount Where LocalAccount = True");
+
+                foreach (ManagementObject user in searcher.Get())
+                {
+                    string name = (string)user["Name"];
+                    bool disabled = (bool)user["Disabled"];
+                    bool lockedOut = (bool)user["Lockout"];
+                    bool passwordRequired = (bool)user["PasswordRequired"];
+                    string sid = (string)user["SID"];
+
+                    // Exclude built-in accounts
+                    if (sid.StartsWith("S-1-5-") && !sid.EndsWith("-500") && !sid.EndsWith("-501"))
+                    {
+                        Console.WriteLine($"User: {name}, Disabled: {disabled}, LockedOut: {lockedOut}, PasswordRequired: {passwordRequired}");
+                        Console.Write("Do you want to remove this user? (y/n): ");
+                        var input = Console.ReadLine();
+                        if (input.Equals("y", StringComparison.OrdinalIgnoreCase))
+                        {
+                            try
+                            {
+                                ExecuteCommand($"net user \"{name}\" /delete");
+                                Console.WriteLine($"User '{name}' has been deleted.");
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"Failed to delete user '{name}': {ex.Message}");
+                            }
+                        }
+                        else
+                        {
+                            Console.WriteLine($"User '{name}' not deleted.");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error identifying hidden users: {ex.Message}");
+            }
+        }
+
+        private static void HandleRecycleBin()
+        {
+            Console.WriteLine("Listing items in Recycle Bin...");
+
+            // Recycle Bin path
+            string recycleBinPath = @"C:\$Recycle.Bin";
+
+            if (Directory.Exists(recycleBinPath))
+            {
+                var recycleBinDirectories = Directory.GetDirectories(recycleBinPath);
+
+                foreach (var dir in recycleBinDirectories)
+                {
+                    var files = Directory.GetFiles(dir, "*", SearchOption.AllDirectories);
+                    foreach (var file in files)
+                    {
+                        Console.WriteLine($"Recycle Bin Item: {file}");
+                    }
+                }
+
+                Console.Write("Do you want to empty the Recycle Bin? (y/n): ");
+                var input = Console.ReadLine();
+                if (input.Equals("y", StringComparison.OrdinalIgnoreCase))
+                {
+                    try
+                    {
+                        // Empty the Recycle Bin
+                        SHEmptyRecycleBin(IntPtr.Zero, null, RecycleFlags.SHERB_NOCONFIRMATION | RecycleFlags.SHERB_NOPROGRESSUI);
+                        Console.WriteLine("Recycle Bin emptied.");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Failed to empty Recycle Bin: {ex.Message}");
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("Recycle Bin not emptied.");
+                }
+            }
+            else
+            {
+                Console.WriteLine("Recycle Bin directory not found.");
+            }
+        }
+
+        [DllImport("Shell32.dll", CharSet = CharSet.Unicode)]
+        private static extern int SHEmptyRecycleBin(IntPtr hwnd, string? pszRootPath, RecycleFlags dwFlags);
+
+        [Flags]
+        private enum RecycleFlags : int
+        {
+            SHERB_NOCONFIRMATION = 0x00000001,
+            SHERB_NOPROGRESSUI = 0x00000002,
+            SHERB_NOSOUND = 0x00000004
+        }
+
+
+        private static void ExecuteCommand(string command)
+        {
+            try
+            {
+                ProcessStartInfo psi = new ProcessStartInfo("cmd.exe", "/c " + command)
+                {
+                    CreateNoWindow = true,
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                };
+                Process p = Process.Start(psi);
+                string output = p.StandardOutput.ReadToEnd();
+                string error = p.StandardError.ReadToEnd();
+                p.WaitForExit();
+                if (!string.IsNullOrEmpty(output))
+                {
+                    Console.WriteLine(output);
+                }
+                if (!string.IsNullOrEmpty(error))
+                {
+                    Console.WriteLine(error);
+                }
+                Console.WriteLine($"Executed command: {command}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error executing command '{command}': {ex.Message}");
+            }
+        }
+
+
+
 
 }
 
