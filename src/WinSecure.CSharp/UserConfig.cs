@@ -1381,7 +1381,17 @@ Revision=1
         {
             Console.WriteLine("Starting cleanup of temporary files...");
 
-            DeleteTempFiles();
+            Console.Write("Do you want to delete temporary files? (y/n): ");
+            string input = Console.ReadLine();
+            if (input.Equals("y", StringComparison.OrdinalIgnoreCase))
+            {
+                DeleteTempFiles();
+            }
+            else
+            {
+                Console.WriteLine("Skipping deletion of temp files.");
+            }
+
 
             List<string> mediaFiles = FindMediaFiles();
 
