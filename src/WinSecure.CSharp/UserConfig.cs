@@ -50,6 +50,7 @@ public class UserConfig
 		MiscellaneousConfigurations2();
         theCincinatiZoo();
         amongTheReindeer();
+        advancedW10Hardening();
 	}
 
 
@@ -1528,7 +1529,7 @@ Revision=1
             EnableMicrosoftNetworkClientDigitallySign();
 
             Console.WriteLine("Firewall and network settings configured.");
-        }
+        }   
 
         private static void EnableFirewall()
         {
@@ -3391,6 +3392,51 @@ Revision=1
             }
         }
 
+    public static void advancedW10Hardening()
+    {
+
+        Console.WriteLine("Starting advanced Windows 10 hardening...");
+
+        // According to Microsoft's documentation:
+        // "Microsoft network server: Digitally sign communications (always)" corresponds to:
+        // HKLM\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters\RequireSecuritySignature = 1
+        SetRegistryValue(@"SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters", "RequireSecuritySignature", 1);
+        Console.WriteLine("Microsoft network server: Digitally sign communications (always) enabled.");
+
+
+        // 1. Sufficient password history (e.g., 24 remembered)
+        ExecuteCommand("net accounts /uniquepw:24");
+
+        // 2. A secure lockout threshold (e.g., 5 attempts)
+        ExecuteCommand("net accounts /lockoutthreshold:5");
+
+        // 3. Account logon failures are logged
+        //    We'll enable auditing for both success and failure for Account Logon and Logon/Logoff events:
+        ExecuteCommand("auditpol /set /subcategory:\"Account Logon\" /success:enable /failure:enable");
+        ExecuteCommand("auditpol /set /subcategory:\"Logon/Logoff\" /success:enable /failure:enable");
+
+        // 4. Limit local use of blank passwords to console only [enabled]
+        SetRegistryValue(@"SYSTEM\CurrentControlSet\Control\Lsa", "LimitBlankPasswordUse", 1);
+
+        // 5. Don't display last signed in [enabled]
+        SetRegistryValue(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System", "DontDisplayLastUserName", 1);
+
+        // 6. Windows StartScreen configured to warn or block
+        //    Assuming this corresponds to SmartScreen configuration:
+        //    Set ShellSmartScreenLevel to "Warn" or "Block".
+        //    For maximum security, set to "Block".
+        SetRegistryValue(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System", "ShellSmartScreenLevel", "Block", RegistryValueKind.String);
+
+        // 7. Do not allow anonymous enumeration of SAM accounts [enabled]
+        //    According to Microsoft, setting RestrictAnonymousSAM to 1 disallows anonymous SAM enumeration.
+        SetRegistryValue(@"SYSTEM\CurrentControlSet\Control\Lsa", "RestrictAnonymousSAM", 1);
+
+        // 8. Microsoft Network Client: Digitally Sign Communications (Always)
+        //    For the network client, enable RequireSecuritySignature.
+        SetRegistryValue(@"SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters", "RequireSecuritySignature", 1);
+
+        Console.WriteLine("Advanced W10 Hardening completed.");
+    }
 
 
 
