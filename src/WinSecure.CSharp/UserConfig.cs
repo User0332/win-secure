@@ -36,11 +36,11 @@ public class UserConfig
 		ManageApplications();
 		ConfigureUserRightsAssignments();
 		ConfigureSecurityOptions();
-		//ConfigureUserAccounts();
+		ConfigureUserAccounts();
 		ApplySecurityPolicies();
 		CleanTemporaryFiles();
 		ConfigureFirewallAndNetworkSettings();
-        //ManageGroups();
+        ManageGroups();
         MiscellaneousConfigurations();
         ConfigureAdvancedFirewallSettings();
         ConfigureAdvancedAuditPolicies();
